@@ -1,0 +1,1614 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AKF | سامانه مدیریت و پرونده دانش‌آموزان</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap');
+
+:root{
+  --bg:#FAF6EC;
+  --paper:#FFFFFF;
+  --ink:#1B2A4A;
+  --ink-soft:#4A5776;
+  --seal:#A63A3A;
+  --seal-dark:#7E2B2B;
+  --gold:#C9971F;
+  --line:#D8CFB8;
+  --green:#3E7A4F;
+}
+*{box-sizing:border-box;}
+body{margin:0;font-family:'Vazirmatn',Tahoma,Arial,sans-serif;background:var(--bg);color:var(--ink);
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px);
+  background-size: 100% 42px;
+}
+#app{max-width:1000px;margin:0 auto;padding:18px 14px 60px;}
+h1,h2,h3{font-weight:800;margin:0 0 6px;}
+p{line-height:1.9;color:var(--ink-soft);margin:0 0 10px;}
+button{font-family:inherit;cursor:pointer;border:none;border-radius:10px;padding:11px 18px;font-size:15px;font-weight:600;transition:.15s;}
+button.primary{background:var(--ink);color:#fff;}
+button.primary:hover{background:#243662;}
+button.seal{background:var(--seal);color:#fff;}
+button.seal:hover{background:var(--seal-dark);}
+button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line);}
+button.ghost:hover{border-color:var(--ink);}
+button.gold{background:var(--gold);color:#fff;}
+button:disabled{opacity:.5;cursor:not-allowed;}
+input,select,textarea{font-family:inherit;font-size:15px;padding:10px 12px;border:1.5px solid var(--line);
+  border-radius:8px;background:#fff;color:var(--ink);width:100%;}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--ink);}
+label{display:block;font-size:13px;color:var(--ink-soft);margin:10px 0 4px;font-weight:600;}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:14px;
+  box-shadow:0 1px 0 rgba(27,42,74,.04);}
+.center-screen{min-height:80vh;display:flex;align-items:center;justify-content:center;}
+.gate-card{max-width:380px;width:100%;text-align:center;}
+.brand{font-size:34px;font-weight:800;letter-spacing:2px;color:var(--seal);margin-bottom:2px;}
+.brand-sub{font-size:13px;color:var(--ink-soft);margin-bottom:22px;}
+.row{display:flex;gap:10px;flex-wrap:wrap;}
+.row > *{flex:1;min-width:120px;}
+.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:12px;
+  border-bottom:2px solid var(--ink);}
+.topbar .who{font-size:13px;color:var(--ink-soft);}
+.tag{display:inline-block;background:var(--bg);border:1px solid var(--line);border-radius:20px;padding:3px 12px;
+  font-size:12px;font-weight:600;margin-left:6px;}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+@media(max-width:520px){.grid{grid-template-columns:1fr;}}
+.class-card{cursor:pointer;}
+.class-card:hover{border-color:var(--ink);}
+.student-row{display:flex;justify-content:space-between;align-items:center;padding:10px 4px;
+  border-bottom:1px solid var(--line);cursor:pointer;}
+.student-row:hover{background:#F5F0E2;}
+.student-row:last-child{border-bottom:none;}
+.stamp{width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
+  color:#fff;font-size:14px;font-weight:800;
+  box-shadow:0 0 0 2px rgba(255,255,255,.75), 0 0 0 3px rgba(0,0,0,.08), 0 3px 6px rgba(27,42,74,.28),
+    inset 0 2px 3px rgba(255,255,255,.35), inset 0 -3px 5px rgba(0,0,0,.25);
+  text-shadow:0 1px 1px rgba(0,0,0,.3);}
+.stamp.small{width:24px;height:24px;font-size:10px;}
+.stamp-row{display:flex;gap:6px;align-items:center;}
+.palette{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 4px;}
+.swatch{width:32px;height:32px;border-radius:50%;padding:0;border:2px solid transparent;box-shadow:inset 0 0 0 1px rgba(0,0,0,.1);}
+.swatch.selected{border-color:var(--ink);transform:scale(1.12);}
+.shape-btn{width:36px;height:36px;padding:0;border-radius:8px;background:#fff;border:1.5px solid var(--line);
+  font-size:16px;color:var(--ink);}
+.shape-btn.selected{border-color:var(--seal);background:var(--bg);color:var(--seal);}
+.stamp-preview{margin-top:10px;display:flex;align-items:center;gap:8px;}
+.ai-badge{display:inline-flex;align-items:center;gap:5px;background:linear-gradient(135deg,var(--gold),#e0b34a);
+  color:#fff;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;}
+.comment{border-right:3px solid var(--line);padding:8px 12px;margin-bottom:8px;background:#FDFBF5;border-radius:6px;}
+.comment .meta{font-size:12px;color:var(--ink-soft);margin-bottom:4px;display:flex;align-items:center;gap:6px;}
+.tabbar{display:flex;gap:6px;margin-bottom:14px;border-bottom:1.5px solid var(--line);}
+.tabbar button{background:transparent;border-radius:8px 8px 0 0;color:var(--ink-soft);padding:9px 16px;}
+.tabbar button.active{color:var(--ink);border-bottom:2.5px solid var(--seal);margin-bottom:-1.5px;}
+.modal-bg{position:fixed;inset:0;background:rgba(27,42,74,.45);display:flex;align-items:flex-end;justify-content:center;
+  z-index:50;}
+@media(min-width:640px){.modal-bg{align-items:center;}}
+.modal{background:var(--paper);border-radius:16px 16px 0 0;max-width:600px;width:100%;max-height:88vh;overflow:auto;
+  padding:20px;}
+@media(min-width:640px){.modal{border-radius:16px;}}
+.close-x{float:left;background:none;color:var(--ink-soft);font-size:20px;padding:2px 8px;}
+.subtle{font-size:13px;color:var(--ink-soft);}
+.badge-honor{display:inline-block;background:var(--bg);border:1px solid var(--gold);color:#8a6a12;
+  padding:3px 10px;border-radius:20px;font-size:12px;margin:2px 3px 2px 0;}
+table{width:100%;border-collapse:collapse;font-size:14px;}
+th,td{padding:7px 6px;text-align:center;border-bottom:1px solid var(--line);}
+th{color:var(--ink-soft);font-weight:600;}
+.toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;
+  padding:10px 20px;border-radius:10px;font-size:14px;z-index:100;}
+.loader{display:inline-block;width:16px;height:16px;border:2.5px solid #fff;border-top-color:transparent;
+  border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.err{color:var(--seal);font-size:13px;margin-top:6px;}
+.chip-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+.chip{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px;
+  display:flex;align-items:center;gap:6px;}
+.chip button{padding:0 4px;background:none;color:var(--seal);font-size:14px;}
+a.linklike{color:var(--ink);text-decoration:underline;cursor:pointer;font-size:13px;}
+.offline-bar{position:fixed;top:0;left:0;right:0;background:var(--seal);color:#fff;text-align:center;
+  font-size:13px;padding:6px;z-index:200;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<!-- Global safety net: this app is used all year by many teachers/students on
+     school wifi — an unexpected error must never leave a blank white screen. -->
+<script>
+window.addEventListener('error', function(e){
+  console.error('Uncaught error:', e.error || e.message);
+});
+window.addEventListener('unhandledrejection', function(e){
+  console.error('Unhandled promise rejection:', e.reason);
+});
+</script>
+
+<!-- Firebase (compat SDK — simplest to use from a single static HTML file, no build step) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" onerror="window.__fbLoadFailed=true"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" onerror="window.__fbLoadFailed=true"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" onerror="window.__fbLoadFailed=true"></script>
+<script>
+// ============================================================================
+// FIREBASE SETUP — this project belongs only to this school. All data lives in
+// your own Firestore database, isolated from anything else, protected by
+// firestore.rules (see the separate rules file) that only lets signed-in
+// teachers/admin of THIS school read or write anything.
+// ============================================================================
+
+// If any of the three CDN scripts above failed to load (blocked network,
+// offline, ad-blocker, DNS issue at school, etc.) `firebase` will not exist.
+// Instead of crashing with a blank white page, show a clear Persian message
+// with a retry button — this app runs for a full school year, so it must
+// fail gracefully rather than break silently for a non-technical teacher.
+if (typeof firebase === 'undefined' || window.__fbLoadFailed) {
+  document.getElementById('app').innerHTML = `
+    <div style="min-height:80vh;display:flex;align-items:center;justify-content:center;padding:20px;">
+      <div style="max-width:420px;text-align:center;font-family:Tahoma,Arial,sans-serif;">
+        <div style="font-size:40px;margin-bottom:10px;">⚠️</div>
+        <h2 style="margin:0 0 10px;color:#A63A3A;">اتصال به سرور برقرار نشد</h2>
+        <p style="color:#4A5776;line-height:1.9;margin:0 0 18px;">
+          کتابخانه‌ی Firebase بارگذاری نشد. لطفاً اتصال اینترنت را بررسی کنید
+          (یا اگر در شبکه‌ی مدرسه هستید، مطمئن شوید آدرس gstatic.com مسدود نیست)
+          و دوباره تلاش کنید.
+        </p>
+        <button onclick="location.reload()" style="font-family:inherit;cursor:pointer;border:none;border-radius:10px;
+          padding:11px 22px;font-size:15px;font-weight:600;background:#1B2A4A;color:#fff;">
+          تلاش مجدد
+        </button>
+      </div>
+    </div>`;
+  window.__fbInitFailed = true;
+}
+
+const firebaseConfig = window.__fbInitFailed ? null : {
+  apiKey: "AIzaSyBU9mYR4hhg21MEXkIjfFBvxK4aNGZykgU",
+  authDomain: "wapk-47cdd.firebaseapp.com",
+  projectId: "wapk-47cdd",
+  storageBucket: "wapk-47cdd.firebasestorage.app",
+  messagingSenderId: "19532838167",
+  appId: "1:19532838167:web:7f0ec160b9d8164ffab352"
+};
+let auth, db;
+if (!window.__fbInitFailed) {
+  firebase.initializeApp(firebaseConfig);
+  auth = firebase.auth();
+  db = firebase.firestore();
+  db.enablePersistence({synchronizeTabs:true}).catch(()=>{}); // offline cache: keeps working (read-only) if wifi drops briefly
+}
+
+// The one admin account for this school. Create this exact user, with a
+// password only you know, in: Firebase Console → Authentication → Users → Add user.
+const ADMIN_EMAIL = 'admin@akf-school.local';
+
+// Teachers log in with just their name, never an email. Firebase Auth still needs
+// an email internally, so we derive a stable, unguessable one from the teacher's
+// name (same name -> always the same email, but you can't reverse it to get the name).
+async function nameToEmail(name){
+  const enc = new TextEncoder().encode(name.trim().toLowerCase());
+  const buf = await crypto.subtle.digest('SHA-256', enc);
+  const hex = Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('').slice(0,24);
+  return `t-${hex}@akf-school.local`;
+}
+</script>
+
+<script>
+const STAMP_COLORS = [
+  '#A63A3A','#7E2B2B','#D65D5D','#E0895A','#B5652E','#C9971F','#DDB84A',
+  '#8E8A2E','#3E7A4F','#4A6741','#2F8F6B','#1E6E6E','#2F5D7C','#3B7FB0',
+  '#1B2A4A','#3A4E9C','#5B4FA8','#8A4FA8','#A854C9','#B3477A','#7C3F58',
+  '#C9527A','#5B4636','#8A6A4A','#4A5776','#1B2A4A','#6B2E3A','#2E6B5E',
+  '#9C5B2E','#4A2E6B'
+];
+const STAMP_SHAPES = ['◆','●','■','✦','◈','▲','✚','❖','◉','★','▼','⬟','⬢','✪','❋','☘','⬥','✤','◐','☆'];
+// 30 colors × 20 shapes = 600 unique stamp designs
+const SUBJECTS = ['ادبیات فارسی','عربی','دینی و قرآن','ریاضی','علوم تجربی','مطالعات اجتماعی',
+  'زبان انگلیسی','هنر','تربیت‌بدنی','کار و فناوری','آمادگی دفاعی','تفکر و سبک زندگی','مشاوره و راهنما'];
+
+function teacherLabel(teacher, cls){
+  const subject = teacher.subjects && teacher.subjects[cls];
+  return subject ? `${teacher.name} — معلم ${subject}` : teacher.name;
+}
+
+let state = {
+  screen:'loading', // loading | login | claimPassword | identity | classPicker | app
+  identity:null,    // {role:'admin'|'teacher', name, teacherId, classes, activeClass}
+  classes:[], students:{}, teachers:{}, comments:[], aiSuggestions:{},
+  tab:'dashboard',
+  selectedClass:null,
+  selectedStudentId:null,
+  toast:null,
+  online:true
+};
+
+function uid(){ return Math.random().toString(36).slice(2,10); }
+
+// escape any user-typed text before it goes into innerHTML (student/teacher names,
+// comments, activities/projects/honors, class names, grade term names, etc.) —
+// otherwise a name or comment containing HTML/script runs for every teacher who views it
+function esc(str){
+  return String(str==null?'':str).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+function showToast(msg){
+  state.toast = msg;
+  render();
+  setTimeout(()=>{ state.toast = null; render(); }, 2200);
+}
+
+window.addEventListener('online', ()=>{ state.online=true; render(); });
+window.addEventListener('offline', ()=>{ state.online=false; render(); });
+
+// ---------- Firestore helpers (each write is its own document, so two teachers
+// editing different students/subjects at the same time never overwrite each other) ----------
+async function fSave(col, id, data){
+  try{ await db.collection(col).doc(id).set(data, {merge:false}); return true; }
+  catch(e){ console.error('save failed', col, id, e); showToast('ذخیره نشد — اتصال را بررسی کنید و دوباره تلاش کنید.'); return false; }
+}
+async function fDelete(col, id){
+  try{ await db.collection(col).doc(id).delete(); return true; }
+  catch(e){ console.error('delete failed', col, id, e); showToast('حذف انجام نشد — دوباره تلاش کنید.'); return false; }
+}
+
+async function saveClasses(){ await fSave('meta', 'config', {classes: state.classes}); }
+async function saveTeacher(t){ state.teachers[t.id]=t; await fSave('teachers', t.id, t); }
+async function saveStudent(s){ state.students[s.id]=s; await fSave('students', s.id, s); }
+async function deleteStudentRecord(id){ delete state.students[id]; await fDelete('students', id); }
+async function deleteTeacherRecord(id){ delete state.teachers[id]; await fDelete('teachers', id); }
+async function saveComment(c){ await fSave('comments', c.id, c); }
+async function deleteCommentRecord(id){ await fDelete('comments', id); }
+async function saveAIForClass(cls, data){ state.aiSuggestions[cls]=data; await fSave('ai', cls, data); }
+async function deleteAIForClass(cls){ delete state.aiSuggestions[cls]; await fDelete('ai', cls); }
+async function savePendingTeacher(p){ await fSave('pendingTeachers', p.id, p); }
+async function deletePendingTeacher(id){ await fDelete('pendingTeachers', id); }
+
+// ---------- live sync: once signed in, keep state updated in real time from Firestore.
+// This means if colleague A adds a comment, colleague B's screen updates automatically
+// without a reload, and nothing ever silently overwrites someone else's save. ----------
+let unsubscribers = [];
+function stopListening(){ unsubscribers.forEach(u=>u()); unsubscribers=[]; }
+
+function startListening(){
+  stopListening();
+  stopPublicListening(); // once we're loading the authenticated data, the public (pre-login) listeners are redundant
+  unsubscribers.push(db.collection('meta').doc('config').onSnapshot(doc=>{
+    state.classes = (doc.exists && doc.data().classes) || [];
+    render();
+  }, e=>console.error('classes listener', e)));
+
+  unsubscribers.push(db.collection('teachers').onSnapshot(snap=>{
+    const map = {};
+    snap.forEach(doc=>{ map[doc.id] = doc.data(); });
+    state.teachers = map;
+    normalizeData();
+    render();
+  }, e=>console.error('teachers listener', e)));
+
+  unsubscribers.push(db.collection('students').onSnapshot(snap=>{
+    const map = {};
+    snap.forEach(doc=>{ map[doc.id] = doc.data(); });
+    state.students = map;
+    normalizeData();
+    render();
+  }, e=>console.error('students listener', e)));
+
+  unsubscribers.push(db.collection('comments').onSnapshot(snap=>{
+    state.comments = snap.docs.map(d=>d.data());
+    render();
+  }, e=>console.error('comments listener', e)));
+
+  unsubscribers.push(db.collection('ai').onSnapshot(snap=>{
+    const map = {};
+    snap.forEach(doc=>{ map[doc.id] = doc.data(); });
+    state.aiSuggestions = map;
+    render();
+  }, e=>console.error('ai listener', e)));
+}
+
+// public (no login required) listeners, so the login/registration screens can show
+// existing classes & teacher stamps before anyone has signed in
+let publicUnsubscribers = [];
+function stopPublicListening(){ publicUnsubscribers.forEach(u=>u()); publicUnsubscribers=[]; }
+function startPublicListening(){
+  stopPublicListening(); // idempotent — safe to call even if already listening, never doubles up
+  publicUnsubscribers.push(db.collection('meta').doc('config').onSnapshot(doc=>{
+    state.classes = (doc.exists && doc.data().classes) || [];
+    render();
+  }));
+  publicUnsubscribers.push(db.collection('teachers').onSnapshot(snap=>{
+    const map = {};
+    snap.forEach(doc=>{ map[doc.id] = doc.data(); });
+    state.teachers = map;
+    normalizeData();
+    render();
+  }));
+}
+
+function normalizeData(){
+  Object.values(state.teachers).forEach(t=>{
+    if(!t.classes) t.classes = [];
+    if(!t.subjects) t.subjects = {};
+  });
+  Object.values(state.students).forEach(s=>{
+    ['activities','projects','honors'].forEach(field=>{
+      if(!s[field] || typeof s[field] !== 'object') s[field] = {};
+    });
+  });
+  if(state.identity && state.identity.role==='teacher'){
+    const t = state.teachers[state.identity.teacherId];
+    if(t){
+      state.identity.classes = t.classes;
+      if(!state.identity.activeClass) state.identity.activeClass = t.classes[0] || null;
+    }
+  }
+}
+
+// ---------- boot: Firebase Auth remembers the session automatically across
+// visits — no custom "identity" storage needed anymore. ----------
+if (!window.__fbInitFailed) {
+startPublicListening();
+auth.onAuthStateChanged(async (user)=>{
+  if(!user){
+    state.identity = null;
+    stopListening();
+    startPublicListening(); // back at the login screen — restore the pre-login listeners so it can show classes/stamps again
+    state.screen = 'login';
+    render();
+    return;
+  }
+  if(user.email === ADMIN_EMAIL){
+    state.identity = {role:'admin', name:'مدیر مدرسه'};
+    startListening();
+    state.screen = 'app';
+    render();
+    return;
+  }
+  // teacher: their profile MUST exist at teachers/{uid}, or this session is invalid
+  try{
+    const doc = await db.collection('teachers').doc(user.uid).get();
+    if(!doc.exists){
+      await auth.signOut();
+      showToast('حساب شما یافت نشد. با مدیر مدرسه تماس بگیرید.');
+      return;
+    }
+    const t = doc.data();
+    state.identity = {name:t.name, role:'teacher', teacherId:user.uid, classes:t.classes, activeClass:t.classes[0]||null};
+    startListening();
+    state.screen = 'classPicker';
+    render();
+  }catch(e){
+    console.error('teacher profile load failed', e);
+    showToast('اتصال برقرار نشد. اتصال اینترنت را بررسی کنید.');
+  }
+});
+}
+
+// ---------- login ----------
+function switchLoginMode(mode){
+  state._loginMode = mode; // 'admin' | 'teacher'
+  state._loginErr = '';
+  state._adminSetupOffer = false;
+  render();
+}
+// A hardcoded admin password used to live here and get checked before ever
+// touching Firebase Auth — anyone using "View Source" could read it, and worse,
+// using it never actually signed in, so Firestore reads/writes silently failed
+// once real security rules were added. Removed. Admin now always goes through
+// real Firebase Auth (auth.signInWithEmailAndPassword), same as teachers.
+async function submitAdminLogin(){
+  const pw = document.getElementById('login-admin-pw').value;
+  const btn = document.getElementById('admin-login-btn');
+  btn.disabled = true;
+  document.getElementById('login-err').textContent = '';
+  try{
+    await auth.signInWithEmailAndPassword(ADMIN_EMAIL, pw);
+  }catch(e){
+    console.error('admin login failed:', e.code, e.message);
+    if(e.code === 'auth/user-not-found'){
+      // No admin account exists yet in Firebase — offer a ONE-TIME setup so the
+      // school doesn't need to touch the Firebase console directly.
+      state._adminSetupOffer = pw;
+      render();
+    } else {
+      document.getElementById('login-err').textContent = 'رمز مدیر اشتباه است.';
+    }
+  }
+  btn.disabled = false;
+}
+async function setupAdminAccount(){
+  const pw = state._adminSetupOffer;
+  if(!pw || pw.length < 6){
+    document.getElementById('login-err').textContent = 'رمز باید حداقل ۶ کاراکتر باشد.';
+    return;
+  }
+  try{
+    await auth.createUserWithEmailAndPassword(ADMIN_EMAIL, pw);
+    // onAuthStateChanged takes it from here — admin is now signed in for real
+  }catch(e){
+    console.error('admin setup failed:', e.code, e.message);
+    document.getElementById('login-err').textContent = 'ساخت حساب مدیر ناموفق بود: ' + (e.message||'');
+    state._adminSetupOffer = false;
+    render();
+  }
+}
+async function submitTeacherLogin(){
+  const name = document.getElementById('login-teacher-name').value.trim();
+  const pw = document.getElementById('login-teacher-pw').value;
+  if(!name){ document.getElementById('login-err').textContent = 'نام را وارد کنید.'; return; }
+  const email = await nameToEmail(name);
+
+  if(!pw){
+    // no password typed yet — figure out whether this is a brand new teacher,
+    // someone bulk-added by the admin who hasn't set a password yet, or an
+    // existing teacher who just forgot to type their password.
+    const pending = await db.collection('pendingTeachers').where('name','==',name).limit(1).get();
+    if(!pending.empty){
+      state._claimPendingDoc = {id: pending.docs[0].id, ...pending.docs[0].data()};
+      state.screen = 'claimPassword';
+      render();
+      return;
+    }
+    const existing = Object.values(state.teachers).find(t=>t.name===name);
+    if(!existing){
+      state._pendingName = name;
+      state.screen = 'identity';
+      render();
+      return;
+    }
+    document.getElementById('login-err').textContent = 'رمز را وارد کنید.';
+    return;
+  }
+
+  const btn = document.getElementById('teacher-login-btn');
+  btn.disabled = true;
+
+  try{
+    await auth.signInWithEmailAndPassword(email, pw);
+  }catch(e){
+    if(e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential'){
+      const pending = await db.collection('pendingTeachers').where('name','==',name).limit(1).get();
+      if(!pending.empty){
+        state._claimPendingDoc = {id: pending.docs[0].id, ...pending.docs[0].data()};
+        state.screen = 'claimPassword';
+      } else {
+        const existing = Object.values(state.teachers).find(t=>t.name===name);
+        if(existing){
+          document.getElementById('login-err').textContent = 'رمز اشتباه است.';
+        } else {
+          state._pendingName = name;
+          state.screen = 'identity';
+        }
+      }
+      render();
+    } else {
+      document.getElementById('login-err').textContent = 'رمز اشتباه است.';
+    }
+  }
+  btn.disabled = false;
+}
+
+// finish registration for a teacher the admin already bulk-added (name/class/subject/stamp
+// exist in pendingTeachers) — they just need to create their own login password
+async function submitClaimPassword(){
+  const pw = document.getElementById('claim-pw').value;
+  const pw2 = document.getElementById('claim-pw2').value;
+  const err = document.getElementById('claim-err');
+  if(pw.length < 6){ err.textContent = 'رمز باید حداقل ۶ کاراکتر باشد.'; return; }
+  if(pw !== pw2){ err.textContent = 'تکرار رمز مطابقت ندارد.'; return; }
+  const pending = state._claimPendingDoc;
+  const email = await nameToEmail(pending.name);
+  try{
+    const cred = await auth.createUserWithEmailAndPassword(email, pw);
+    const teacher = {
+      id: cred.user.uid, name: pending.name, classes: pending.classes,
+      subjects: pending.subjects, color: pending.color, shape: pending.shape
+    };
+    await saveTeacher(teacher);
+    await deletePendingTeacher(pending.id);
+    showToast('رمز شما تنظیم شد.');
+    // onAuthStateChanged will pick this up and route to classPicker
+  }catch(e){
+    err.textContent = e.code==='auth/email-already-in-use' ? 'این حساب قبلاً ساخته شده — از صفحه ورود استفاده کنید.' : 'خطایی رخ داد، دوباره تلاش کنید.';
+  }
+}
+
+// ---------- identity flow: registration of a genuinely NEW teacher ----------
+function teachersInClass(cls){
+  return Object.values(state.teachers).filter(t=>t.classes.includes(cls));
+}
+function sortedClasses(){
+  return [...state.classes].sort((a,b)=>a.localeCompare(b,'fa'));
+}
+
+async function submitIdentity(){
+  const name = (state._pendingName||'').trim();
+  if(!name){ document.getElementById('id-err').textContent='لطفاً نام خود را وارد کنید.'; return; }
+  const cls = state._pendingClass;
+  if(!cls){ document.getElementById('id-err').textContent='لطفاً یک کلاس انتخاب کنید.'; return; }
+  const subject = state._pendingSubject;
+  if(!subject){ document.getElementById('id-err').textContent='لطفاً درسی که در این کلاس تدریس می‌کنید را انتخاب کنید.'; return; }
+
+  const existingByName = Object.values(state.teachers).find(t=>t.name===name);
+  if(existingByName){
+    document.getElementById('id-err').textContent = 'این نام قبلاً ثبت شده. لطفاً از صفحه ورود با رمز خود وارد شوید.';
+    return;
+  }
+  const pw = state._pendingPassword || '';
+  const pw2 = state._pendingPassword2 || '';
+  if(pw.length < 6){ document.getElementById('id-err').textContent = 'رمز باید حداقل ۶ کاراکتر باشد.'; return; }
+  if(pw !== pw2){ document.getElementById('id-err').textContent = 'تکرار رمز مطابقت ندارد.'; return; }
+
+  const classTeachers = teachersInClass(cls);
+  const color = state._pendingColor, shape = state._pendingShape;
+  if(!color || !shape){
+    document.getElementById('id-err').textContent = 'یک رنگ و یک طرح برای مهر اختصاصی خود انتخاب کنید.';
+    return;
+  }
+  const taken = classTeachers.some(t=>t.color===color && t.shape===shape);
+  if(taken){
+    document.getElementById('id-err').textContent = 'این طرح مهر در این کلاس قبلاً انتخاب شده؛ طرح دیگری را انتخاب کنید.';
+    return;
+  }
+
+  const email = await nameToEmail(name);
+  try{
+    const cred = await auth.createUserWithEmailAndPassword(email, pw);
+    const teacher = {id: cred.user.uid, name, classes:[cls], color, shape, subjects:{[cls]:subject}};
+    await saveTeacher(teacher);
+    // onAuthStateChanged will route to classPicker automatically
+  }catch(e){
+    document.getElementById('id-err').textContent = e.code==='auth/email-already-in-use' ? 'این نام قبلاً ثبت شده. لطفاً وارد شوید.' : 'خطایی رخ داد، دوباره تلاش کنید.';
+  }
+}
+
+// ---------- per-session class picker for returning teachers ----------
+function selectActiveClass(cls){
+  state.identity.activeClass = cls;
+  state.screen = 'app';
+  state.tab = 'search';
+  render();
+}
+
+function startJoinClass(){
+  state._joiningClass = true;
+  state._pendingClass = '';
+  state._pendingSubject = '';
+  render();
+}
+
+async function confirmJoinClass(){
+  const cls = state._pendingClass;
+  if(!cls) return;
+  const subject = state._pendingSubject;
+  if(!subject){ document.getElementById('join-err').textContent = 'لطفاً درس این کلاس را انتخاب کنید.'; return; }
+  const teacher = state.teachers[state.identity.teacherId];
+  if(!teacher.classes.includes(cls)) teacher.classes.push(cls);
+  teacher.subjects[cls] = subject;
+  await saveTeacher(teacher);
+  state.identity.classes = teacher.classes;
+  state.identity.activeClass = cls;
+  state._joiningClass = false;
+  state._pendingSubject = '';
+  state.screen = 'app';
+  state.tab = 'search';
+  render();
+}
+
+function openEditSubject(cls){
+  const teacher = state.teachers[state.identity.teacherId];
+  state._editSubjectClass = cls;
+  state._editSubjectValue = (teacher.subjects && teacher.subjects[cls]) || '';
+  state._modal = 'editSubject';
+  render();
+}
+function openChangeTeacherPassword(){
+  state._modal = 'changePassword';
+  render();
+}
+async function submitChangeTeacherPassword(){
+  const cur = document.getElementById('tpw-current').value;
+  const nw = document.getElementById('tpw-new').value;
+  const nw2 = document.getElementById('tpw-new2').value;
+  const err = document.getElementById('tpw-err');
+  if(nw.length < 6){ err.textContent = 'رمز جدید باید حداقل ۶ کاراکتر باشد.'; return; }
+  if(nw !== nw2){ err.textContent = 'تکرار رمز جدید مطابقت ندارد.'; return; }
+  try{
+    const user = auth.currentUser;
+    const cred = firebase.auth.EmailAuthProvider.credential(user.email, cur);
+    await user.reauthenticateWithCredential(cred);
+    await user.updatePassword(nw);
+    state._modal = null;
+    showToast('رمز شما تغییر کرد.');
+    render();
+  }catch(e){
+    err.textContent = 'رمز فعلی اشتباه است.';
+  }
+}
+async function submitEditSubject(){
+  const cls = state._editSubjectClass;
+  const val = state._editSubjectValue;
+  if(!val){ showToast('لطفاً یک درس انتخاب کنید.'); return; }
+  const teacher = state.teachers[state.identity.teacherId];
+  teacher.subjects[cls] = val;
+  await saveTeacher(teacher);
+  state._modal = null;
+  showToast(`درس شما در ${cls} به «${val}» تغییر کرد.`);
+  render();
+}
+
+function switchIdentity(){
+  // auth.signOut() only fires onAuthStateChanged (which normally handles the
+  // screen switch) when there was a real Firebase session. A session started
+  // via the local admin-password shortcut never signed into Firebase, so
+  // signOut() would silently do nothing and the screen would stay stuck.
+  // Reset everything here directly instead of relying on that callback.
+  auth.signOut();
+  stopListening();
+  startPublicListening();
+  state.identity = null;
+  state.screen = 'login';
+  state._loginMode = null;
+  state._pendingName = '';
+  state.tab = 'dashboard';
+  state.selectedClass = null;
+  render();
+}
+
+// ---------- reset ----------
+async function resetAllData(){
+  const typed = prompt('این کار همهٔ کلاس‌ها، دانش‌آموزان، معلمان، نظرات و مهرها را برای همیشه پاک می‌کند و قابل بازگشت نیست.\nبرای تأیید، عبارت زیر را دقیقاً تایپ کنید:\nپاک کن');
+  if(typed !== 'پاک کن'){ if(typed!==null) showToast('عبارت تأیید درست نبود؛ چیزی پاک نشد.'); return; }
+  showToast('در حال پاک‌سازی…');
+  const cols = ['students','comments','ai','pendingTeachers'];
+  for(const col of cols){
+    const snap = await db.collection(col).get();
+    let batch = db.batch(); let n=0;
+    for(const doc of snap.docs){
+      batch.delete(doc.ref); n++;
+      if(n===450){ await batch.commit(); batch = db.batch(); n=0; }
+    }
+    if(n>0) await batch.commit();
+  }
+  await db.collection('meta').doc('config').set({classes:[]});
+  // Note: teacher profiles & their Firebase Auth accounts are intentionally kept
+  // (deleting other users' auth accounts requires an admin server, not this page).
+  showToast('کلاس‌ها، دانش‌آموزان، نظرات و مهرهای AI پاک شدند.');
+  render();
+}
+
+// ---------- backup / export ----------
+function exportBackup(){
+  const data = {
+    exportedAt: new Date().toISOString(),
+    classes: state.classes,
+    teachers: Object.values(state.teachers),
+    students: state.students,
+    comments: state.comments,
+    aiSuggestions: state.aiSuggestions
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `akf-backup-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('فایل پشتیبان دانلود شد.');
+}
+
+// ---------- class / student management ----------
+async function addClass(){
+  const name = document.getElementById('new-class-name').value.trim();
+  if(!name) return;
+  if(state.classes.includes(name)){ showToast('این کلاس قبلاً وجود دارد.'); return; }
+  state.classes.push(name);
+  await saveClasses();
+  document.getElementById('new-class-name').value='';
+  render();
+}
+async function removeClass(cls){
+  if(!confirm(`کلاس «${cls}» و دانش‌آموزانش حذف شود؟`)) return;
+  state.classes = state.classes.filter(c=>c!==cls);
+
+  const removedStudentIds = Object.keys(state.students).filter(id=>state.students[id].class===cls);
+  const affectedTeachers = Object.values(state.teachers).filter(t=>t.classes.includes(cls));
+  const updatedTeachers = [];
+  const removedTeacherIds = [];
+  affectedTeachers.forEach(t=>{
+    t.classes = t.classes.filter(c=>c!==cls);
+    if(t.subjects) delete t.subjects[cls];
+    if(t.classes.length===0) removedTeacherIds.push(t.id); else updatedTeachers.push(t);
+  });
+
+  await Promise.all([
+    saveClasses(),
+    ...removedStudentIds.map(id=>deleteStudentRecord(id)),
+    ...updatedTeachers.map(t=>saveTeacher(t)),
+    ...removedTeacherIds.map(id=>deleteTeacherRecord(id)),
+    deleteAIForClass(cls)
+  ]);
+  showToast(`کلاس «${cls}» حذف شد.`);
+  render();
+}
+
+function openAddStudent(cls){
+  state._newStudentClass = cls;
+  state._modal = 'addStudent';
+  render();
+}
+async function submitAddStudent(){
+  const btn = document.getElementById('as-submit-btn');
+  if(btn.disabled) return;
+  const name = document.getElementById('as-name').value.trim();
+  if(!name) return;
+  const dup = Object.values(state.students).some(s=>s.class===state._newStudentClass && s.name===name);
+  if(dup){ showToast('دانش‌آموزی با این نام از قبل در این کلاس ثبت شده.'); return; }
+  btn.disabled = true;
+  const id = uid();
+  const student = { id, name, class: state._newStudentClass, grades:{'ترم ۱': 0}, activities:{}, projects:{}, honors:{} };
+  await saveStudent(student);
+  state._modal = null;
+  showToast('دانش‌آموز اضافه شد.');
+  render();
+}
+
+function openStudent(id){
+  const s = state.students[id];
+  if(!s){ showToast('این دانش‌آموز دیگر در دسترس نیست.'); return; }
+  state.selectedStudentId = id;
+  state._modal = 'student';
+  if(state.identity.role==='admin'){
+    const existingSubjects = [...new Set([
+      ...Object.keys(s.activities||{}), ...Object.keys(s.projects||{}), ...Object.keys(s.honors||{})
+    ])];
+    state._modalSubject = existingSubjects[0] || '';
+  } else {
+    const t = state.teachers[state.identity.teacherId];
+    state._modalSubject = (t && t.subjects[s.class]) || '';
+  }
+  render();
+}
+function closeModal(){ state._modal = null; render(); }
+function changeModalSubject(val){ state._modalSubject = val; render(); }
+
+async function addGradeTerm(){
+  const s = state.students[state.selectedStudentId];
+  const termName = document.getElementById('grade-term-name').value.trim();
+  const val = parseFloat(document.getElementById('grade-term-val').value);
+  if(!termName || isNaN(val)) return;
+  s.grades[termName] = Math.max(0, Math.min(20, val));
+  await saveStudent(s);
+  document.getElementById('grade-term-name').value='';
+  document.getElementById('grade-term-val').value='';
+  render();
+}
+async function addChip(field){
+  const s = state.students[state.selectedStudentId];
+  const subject = state._modalSubject;
+  if(!subject){ showToast('ابتدا درس مورد نظر را انتخاب کنید.'); return; }
+  const input = document.getElementById('chip-input-'+field);
+  const val = input.value.trim();
+  if(!val) return;
+  if(!s[field][subject]) s[field][subject] = [];
+  s[field][subject].push(val);
+  await saveStudent(s);
+  input.value='';
+  render();
+}
+async function removeChip(field, idx){
+  const s = state.students[state.selectedStudentId];
+  const subject = state._modalSubject;
+  if(!subject || !s[field][subject]) return;
+  s[field][subject].splice(idx,1);
+  await saveStudent(s);
+  render();
+}
+
+// ---------- comments / teacher stamps ----------
+async function submitComment(){
+  const text = document.getElementById('comment-text').value.trim();
+  if(!text) return;
+  const t = state.teachers[state.identity.teacherId];
+  const s = state.students[state.selectedStudentId];
+  const comment = {
+    id:uid(), studentId: state.selectedStudentId, teacherId:t.id, teacherName: teacherLabel(t, s.class),
+    color:t.color, shape:t.shape, text, date: new Date().toLocaleDateString('fa-IR')
+  };
+  await saveComment(comment);
+  document.getElementById('comment-text').value='';
+  showToast('نظر با مهر شما ثبت شد.');
+  render();
+}
+async function deleteComment(id){
+  if(!confirm('این مهر و نظر حذف شود؟')) return;
+  await deleteCommentRecord(id);
+  showToast('مهر برداشته شد.');
+  render();
+}
+
+// ---------- AI stamp (fully internal, no external calls) ----------
+function chipTotal(s, field){
+  return Object.values(s[field]||{}).reduce((sum,arr)=>sum+(arr?arr.length:0), 0);
+}
+async function runAIStamp(cls){
+  const studentsInClass = Object.values(state.students).filter(s=>s.class===cls);
+  if(studentsInClass.length === 0){ showToast('دانش‌آموزی در این کلاس نیست.'); return; }
+
+  const scored = studentsInClass.map(s=>{
+    const vals = Object.values(s.grades).filter(v=>typeof v==='number' && v>0);
+    const avg = vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : 0;
+    const trend = vals.length>=2 ? vals[vals.length-1]-vals[0] : 0;
+    const commentsCount = state.comments.filter(c=>c.studentId===s.id).length;
+    const activitiesCount = chipTotal(s,'activities');
+    const projectsCount = chipTotal(s,'projects');
+    const honorsCount = chipTotal(s,'honors');
+    const score = avg*3 + Math.max(0,trend)*2.5 + activitiesCount*1.5 + projectsCount*2 + honorsCount*3 + commentsCount*0.6;
+
+    const reasons=[];
+    if(avg>=17) reasons.push('میانگین نمرات بالا');
+    else if(avg>=14) reasons.push('میانگین نمرات خوب');
+    if(trend>0.5) reasons.push('روند صعودی نمرات');
+    if(honorsCount>0) reasons.push('کسب افتخار');
+    if(activitiesCount>0 || projectsCount>0) reasons.push('فعالیت و پروژه فعال');
+    if(reasons.length===0) reasons.push('عملکرد پایدار در طول ترم‌ها');
+
+    return {id:s.id, score, reason: reasons.slice(0,2).join(' و ')};
+  });
+
+  scored.sort((a,b)=>b.score-a.score);
+  const aiData = {
+    students: scored.slice(0,5).map(x=>({id:x.id, reason:x.reason})),
+    date: new Date().toLocaleDateString('fa-IR')
+  };
+  await saveAIForClass(cls, aiData);
+  showToast('رتبه‌بندی هوشمند داخلی به‌روزرسانی شد.');
+  render();
+}
+
+// ---------- render helpers ----------
+function stampEl(color, shape, size){
+  return `<span class="stamp ${size==='small'?'small':''}" style="background:${color}">${shape}</span>`;
+}
+
+// grades is a plain object, so its keys follow *insertion* order — if a teacher
+// types term names out of order (e.g. adds "ترم ۳" before "ترم ۲"), the raw
+// object order would wrongly scramble the trend/chart. Sort by the number
+// found inside each term name instead (supports Persian ۰-۹ and Latin 0-9);
+// terms with no number keep their original relative order.
+function persianDigitsToLatin(str){
+  const map = {'۰':'0','۱':'1','۲':'2','۳':'3','۴':'4','۵':'5','۶':'6','۷':'7','۸':'8','۹':'9'};
+  return String(str).replace(/[۰-۹]/g, d=>map[d]);
+}
+function sortedGradeEntries(grades){
+  return Object.entries(grades)
+    .filter(e=>typeof e[1]==='number')
+    .map((e,i)=>({e, i, num:(persianDigitsToLatin(e[0]).match(/\d+/)||[])[0]}))
+    .sort((a,b)=>{
+      if(a.num!=null && b.num!=null) return Number(a.num)-Number(b.num);
+      if(a.num!=null) return -1;
+      if(b.num!=null) return 1;
+      return a.i-b.i;
+    })
+    .map(x=>x.e);
+}
+
+function performanceChartSVG(grades){
+  const entries = sortedGradeEntries(grades);
+  if(entries.length===0) return '<p class="subtle">هنوز نمره‌ای ثبت نشده.</p>';
+
+  const vals = entries.map(e=>e[1]);
+  const avg = vals.reduce((a,b)=>a+b,0)/vals.length;
+  const trend = vals.length>=2 ? vals[vals.length-1]-vals[0] : 0;
+  const trendHtml = trend>0.4
+    ? `<span style="color:var(--green);font-weight:700">▲ صعودی (${trend.toFixed(1)}+)</span>`
+    : trend<-0.4
+      ? `<span style="color:var(--seal);font-weight:700">▼ نزولی (${Math.abs(trend).toFixed(1)}-)</span>`
+      : `<span style="color:var(--ink-soft);font-weight:700">■ ثابت</span>`;
+  const gradeColor = v => v>=14 ? '#3E7A4F' : v>=10 ? '#C9971F' : '#A63A3A';
+
+  const w=600,h=230,padL=36,padR=20,padT=32,padB=36;
+  const max=20,min=0;
+  const innerW = w-padL-padR, innerH = h-padT-padB;
+  const stepX = entries.length>1 ? innerW/(entries.length-1) : 0;
+  const pts = entries.map((e,i)=>{
+    const x = entries.length>1 ? padL + i*stepX : padL + innerW/2;
+    const y = padT + innerH - ((e[1]-min)/(max-min))*innerH;
+    return [x,y];
+  });
+
+  let path = `M ${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+  for(let i=0;i<pts.length-1;i++){
+    const [x0,y0]=pts[i], [x1,y1]=pts[i+1];
+    const cx = (x0+x1)/2;
+    path += ` C ${cx.toFixed(1)},${y0.toFixed(1)} ${cx.toFixed(1)},${y1.toFixed(1)} ${x1.toFixed(1)},${y1.toFixed(1)}`;
+  }
+  const areaPath = path + ` L ${pts[pts.length-1][0].toFixed(1)},${padT+innerH} L ${pts[0][0].toFixed(1)},${padT+innerH} Z`;
+  const passY = padT + innerH - (10/max)*innerH;
+
+  const gridLines = [0,5,10,15,20].map(v=>{
+    const y = padT + innerH - (v/max)*innerH;
+    return `<line x1="${padL}" y1="${y}" x2="${w-padR}" y2="${y}" stroke="#E5DEC9" stroke-width="1"/>
+      <text x="${padL-8}" y="${y+3}" font-size="10" text-anchor="end" fill="#9AA3BB">${v}</text>`;
+  }).join('');
+
+  const dots = pts.map((p,i)=>{
+    const c = gradeColor(entries[i][1]);
+    return `
+    <circle cx="${p[0]}" cy="${p[1]}" r="10" fill="${c}" opacity="0.14"/>
+    <circle cx="${p[0]}" cy="${p[1]}" r="5" fill="#fff" stroke="${c}" stroke-width="2.6"/>
+    <text x="${p[0]}" y="${p[1]-15}" font-size="12" font-weight="700" text-anchor="middle" fill="${c}">${entries[i][1]}</text>
+    <text x="${p[0]}" y="${h-12}" font-size="10.5" text-anchor="middle" fill="#4A5776">${esc(entries[i][0])}</text>`;
+  }).join('');
+
+  return `
+  <div class="row" style="margin:2px 0 10px;gap:18px;flex-wrap:wrap">
+    <span class="subtle">میانگین: <b style="color:var(--ink)">${avg.toFixed(1)}</b> از ۲۰</span>
+    <span class="subtle">روند: ${trendHtml}</span>
+    <span class="subtle">تعداد ترم‌ها: <b style="color:var(--ink)">${entries.length}</b></span>
+  </div>
+  <svg width="100%" viewBox="0 0 ${w} ${h}" style="max-width:100%">
+    <defs>
+      <linearGradient id="akfAreaFill" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#A63A3A" stop-opacity="0.28"/>
+        <stop offset="100%" stop-color="#A63A3A" stop-opacity="0"/>
+      </linearGradient>
+      <linearGradient id="akfLine" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#7E2B2B"/>
+        <stop offset="100%" stop-color="#C9971F"/>
+      </linearGradient>
+    </defs>
+    ${gridLines}
+    <line x1="${padL}" y1="${passY}" x2="${w-padR}" y2="${passY}" stroke="#C9971F" stroke-width="1.2" stroke-dasharray="4,4" opacity="0.6"/>
+    <text x="${w-padR}" y="${passY-6}" font-size="9.5" text-anchor="end" fill="#C9971F">حد نصاب ۱۰</text>
+    ${entries.length>1?`<path d="${areaPath}" fill="url(#akfAreaFill)" stroke="none"/>
+    <path d="${path}" fill="none" stroke="url(#akfLine)" stroke-width="3" stroke-linecap="round"/>`:''}
+    ${dots}
+  </svg>`;
+}
+
+function render(){
+  // Full re-render (innerHTML replace) normally steals focus from whatever
+  // input/textarea the user is typing in, making it feel like the keyboard
+  // "jumps" or drops characters. Remember what was focused (by id) and the
+  // cursor/selection position, then restore it after the DOM is rebuilt.
+  const active = document.activeElement;
+  let focusId = null, selStart = null, selEnd = null;
+  if(active && active.id && (active.tagName==='INPUT' || active.tagName==='TEXTAREA')){
+    focusId = active.id;
+    try{ selStart = active.selectionStart; selEnd = active.selectionEnd; }catch(_){}
+  }
+
+  try{
+    const app = document.getElementById('app');
+    const offline = state.online ? '' : '<div class="offline-bar">آفلاین — تغییرات پس از اتصال دوباره ذخیره می‌شوند</div>';
+    if(state.screen==='loading'){ app.innerHTML = offline+'<div class="center-screen"><p>در حال بارگذاری…</p></div>'; }
+    else if(state.screen==='login'){ app.innerHTML = offline+renderLogin(); }
+    else if(state.screen==='claimPassword'){ app.innerHTML = offline+renderClaimPassword(); }
+    else if(state.screen==='identity'){ app.innerHTML = offline+renderIdentity(); }
+    else if(state.screen==='classPicker'){ app.innerHTML = offline+renderClassPicker(); }
+    else { app.innerHTML = offline+renderApp(); }
+  }catch(e){
+    // A single bad render must never leave a teacher staring at a blank white
+    // page mid-year — show a recoverable message instead of crashing silently.
+    console.error('render failed', e);
+    document.getElementById('app').innerHTML = `
+      <div class="center-screen" style="text-align:center;padding:20px;">
+        <p style="color:#A63A3A;font-weight:600;">مشکلی در نمایش صفحه پیش آمد.</p>
+        <button class="primary" onclick="location.reload()">تلاش مجدد</button>
+      </div>`;
+    return;
+  }
+
+  if(focusId){
+    const el = document.getElementById(focusId);
+    if(el){
+      el.focus({preventScroll:true});
+      if(typeof selStart==='number' && el.setSelectionRange){
+        try{ el.setSelectionRange(selStart, selEnd); }catch(_){}
+      }
+    }
+  }
+}
+
+function renderLogin(){
+  const mode = state._loginMode;
+  return `
+  <div class="center-screen">
+    <div class="card gate-card">
+      <div class="brand">AKF</div>
+      <div class="brand-sub">سامانه مدیریت و پرونده دانش‌آموزان</div>
+      ${!mode ? `
+        <div class="row">
+          <button class="primary" onclick="switchLoginMode('admin')">ورود مدیر</button>
+          <button class="ghost" onclick="switchLoginMode('teacher')">ورود معلم</button>
+        </div>
+      ` : mode==='admin' ? `
+        <label>رمز مدیر</label>
+        <input id="login-admin-pw" type="password" placeholder="رمز مدیر" onkeydown="if(event.key==='Enter')submitAdminLogin()">
+        <div id="login-err" class="err"></div>
+        ${state._adminSetupOffer ? `
+          <div class="card" style="margin-top:10px;padding:10px;background:#FAF6EC">
+            <p class="subtle">هنوز حساب مدیر ساخته نشده. اگر شما مدیر هستید، همین رمز که تایپ کردید به‌عنوان رمز دائمی مدیر ثبت می‌شود — این کار فقط یک‌بار قابل انجام است.</p>
+            <button class="seal" onclick="setupAdminAccount()">ساخت حساب مدیر با این رمز</button>
+          </div>
+        ` : ''}
+        <div class="row" style="margin-top:14px">
+          <button class="ghost" onclick="switchLoginMode(null)">بازگشت</button>
+          <button class="seal" id="admin-login-btn" onclick="submitAdminLogin()">ورود</button>
+        </div>
+      ` : `
+        <label>نام و نام خانوادگی</label>
+        <input id="login-teacher-name" placeholder="مثلاً آقای رضایی">
+        <label>رمز عبور</label>
+        <input id="login-teacher-pw" type="password" placeholder="رمز شما (اگر برای اولین‌بار است، خالی بگذارید)" onkeydown="if(event.key==='Enter')submitTeacherLogin()">
+        <p class="subtle" style="margin-top:6px">اگر برای اولین بار وارد می‌شوید، فقط نام خود را بنویسید و «ورود» را بزنید.</p>
+        <div id="login-err" class="err"></div>
+        <div class="row" style="margin-top:14px">
+          <button class="ghost" onclick="switchLoginMode(null)">بازگشت</button>
+          <button class="seal" id="teacher-login-btn" onclick="submitTeacherLogin()">ورود</button>
+        </div>
+      `}
+    </div>
+  </div>`;
+}
+
+function renderClaimPassword(){
+  const p = state._claimPendingDoc;
+  return `
+  <div class="center-screen">
+    <div class="card gate-card">
+      <div class="brand" style="font-size:22px">${esc(p.name)} عزیز</div>
+      <p class="subtle" style="margin-bottom:14px">حساب شما توسط مدیر ساخته شده. برای امنیت، اکنون یک رمز برای خودتان بسازید.</p>
+      <label>رمز جدید (حداقل ۶ کاراکتر)</label>
+      <input id="claim-pw" type="password" placeholder="رمز جدید">
+      <label>تکرار رمز</label>
+      <input id="claim-pw2" type="password" placeholder="رمز را دوباره وارد کنید" onkeydown="if(event.key==='Enter')submitClaimPassword()">
+      <div id="claim-err" class="err"></div>
+      <div style="margin-top:14px">
+        <button class="seal" onclick="submitClaimPassword()" style="width:100%">ذخیره رمز</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderIdentity(){
+  return `
+  <div class="center-screen">
+    <div class="card gate-card">
+      <div class="brand" style="font-size:24px">ثبت‌نام معلم جدید</div>
+      <p style="margin-bottom:16px">چون نام شما در سامانه یافت نشد، برای اولین بار ثبت‌نام می‌کنید.</p>
+      <label>نام و نام خانوادگی</label>
+      <input id="id-name" value="${state._pendingName||''}" oninput="state._pendingName=this.value" placeholder="مثلاً آقای رضایی">
+      <label>کلاس</label>
+      <select id="id-class" onchange="state._pendingClass=this.value;render()">
+        <option value="">— انتخاب کنید —</option>
+        ${sortedClasses().map(c=>`<option value="${c}" ${state._pendingClass===c?'selected':''}>${c}</option>`).join('')}
+      </select>
+      ${state.classes.length===0 ? '<p class="subtle" style="margin-top:6px">هنوز کلاسی توسط مدیر ثبت نشده است.</p>':''}
+      ${state._pendingClass ? `
+        <p class="subtle" style="margin-top:8px">معلم‌های ثبت‌شده در ${state._pendingClass}:</p>
+        <div class="stamp-row" style="flex-wrap:wrap">
+          ${teachersInClass(state._pendingClass).length===0 ? '<span class="subtle">هنوز معلمی در این کلاس ثبت نشده — اولین نفر باشید.</span>' :
+            teachersInClass(state._pendingClass).map(t=>`${stampEl(t.color,t.shape,'small')}<span class="subtle" style="margin-left:8px">${esc(teacherLabel(t, state._pendingClass))}</span>`).join('&nbsp;&nbsp;')}
+        </div>
+        <label>درسی که در این کلاس تدریس می‌کنید</label>
+        <select id="id-subject" onchange="state._pendingSubject=this.value">
+          <option value="">— انتخاب کنید —</option>
+          ${SUBJECTS.map(su=>`<option value="${su}" ${state._pendingSubject===su?'selected':''}>${su}</option>`).join('')}
+        </select>
+      `:''}
+      <label>رنگ مهر اختصاصی</label>
+      <div class="palette">
+        ${STAMP_COLORS.map(c=>`<button type="button" class="swatch ${state._pendingColor===c?'selected':''}" style="background:${c}" onclick="state._pendingColor='${c}';render()"></button>`).join('')}
+      </div>
+      <label>طرح مهر اختصاصی</label>
+      <div class="palette">
+        ${STAMP_SHAPES.map(sh=>`<button type="button" class="shape-btn ${state._pendingShape===sh?'selected':''}" onclick="state._pendingShape='${sh}';render()">${sh}</button>`).join('')}
+      </div>
+      ${state._pendingColor && state._pendingShape ? `<div class="stamp-preview"><span class="subtle">پیش‌نمایش مهر شما:</span> ${stampEl(state._pendingColor, state._pendingShape)}</div>`:''}
+      <label>رمز عبور (حداقل ۶ کاراکتر)</label>
+      <input id="id-pw" type="password" value="${esc(state._pendingPassword||'')}" oninput="state._pendingPassword=this.value" placeholder="یک رمز برای خودتان بسازید">
+      <label>تکرار رمز</label>
+      <input id="id-pw2" type="password" value="${esc(state._pendingPassword2||'')}" oninput="state._pendingPassword2=this.value" placeholder="رمز را دوباره وارد کنید">
+      <div id="id-err" class="err"></div>
+      <div class="row" style="margin-top:14px">
+        <button class="ghost" onclick="switchIdentity()">بازگشت</button>
+        <button class="seal" onclick="submitIdentity()">ثبت‌نام و ورود</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderClassPicker(){
+  const teacher = state.teachers[state.identity.teacherId];
+  if(!teacher) return '<div class="center-screen"><p>در حال بارگذاری…</p></div>';
+  const myClasses = [...teacher.classes].sort((a,b)=>a.localeCompare(b,'fa'));
+  const joinable = sortedClasses().filter(c=>!myClasses.includes(c));
+  return `
+  <div class="center-screen">
+    <div class="card gate-card" style="max-width:440px">
+      <div class="brand" style="font-size:22px">${esc(state.identity.name)} عزیز</div>
+      <p style="margin-bottom:10px">امروز می‌خواهید کدام کلاس را باز کنید؟</p>
+      ${myClasses.map(c=>`
+        <div class="card class-card" style="margin-bottom:8px;padding:12px">
+          <div class="row" style="align-items:center" onclick="selectActiveClass('${c}')">
+            <b>${esc(c)}</b>
+            ${stampEl(teacher.color, teacher.shape,'small')}
+          </div>
+          <p class="subtle" style="margin:6px 0 0" onclick="selectActiveClass('${c}')">درس شما: ${esc(teacher.subjects[c] || '—')}
+            &nbsp;·&nbsp; همکاران: ${teachersInClass(c).filter(t=>t.id!==teacher.id).map(t=>esc(t.name)).join('، ') || 'فقط شما'}</p>
+          <a class="linklike" style="display:inline-block;margin-top:6px" onclick="event.stopPropagation();openEditSubject('${c}')">ویرایش درس</a>
+        </div>`).join('')}
+
+      ${!state._joiningClass ? `
+        <button class="ghost" style="width:100%;margin-top:6px" onclick="startJoinClass()">پیوستن به کلاس دیگر</button>
+      `:`
+        <label>کلاس جدید</label>
+        <select id="join-class" onchange="state._pendingClass=this.value;render()">
+          <option value="">— انتخاب کنید —</option>
+          ${joinable.map(c=>`<option value="${c}" ${state._pendingClass===c?'selected':''}>${c}</option>`).join('')}
+        </select>
+        ${state._pendingClass ? `
+          <p class="subtle" style="margin-top:8px">معلم‌های ثبت‌شده در ${state._pendingClass}:</p>
+          <div class="stamp-row" style="flex-wrap:wrap">
+            ${teachersInClass(state._pendingClass).length===0 ? '<span class="subtle">هنوز معلمی ثبت نشده.</span>' :
+              teachersInClass(state._pendingClass).map(t=>`${stampEl(t.color,t.shape,'small')}<span class="subtle" style="margin-left:8px">${esc(teacherLabel(t, state._pendingClass))}</span>`).join('&nbsp;&nbsp;')}
+          </div>
+          <label>درسی که در این کلاس تدریس می‌کنید</label>
+          <select id="join-subject" onchange="state._pendingSubject=this.value">
+            <option value="">— انتخاب کنید —</option>
+            ${SUBJECTS.map(su=>`<option value="${su}" ${state._pendingSubject===su?'selected':''}>${su}</option>`).join('')}
+          </select>
+        `:''}
+        <div id="join-err" class="err"></div>
+        <div class="row" style="margin-top:10px">
+          <button class="ghost" onclick="state._joiningClass=false;render()">انصراف</button>
+          <button class="seal" onclick="confirmJoinClass()">ورود به این کلاس</button>
+        </div>
+      `}
+      <a class="linklike" style="display:block;margin-top:14px" onclick="switchIdentity()">تغییر کاربر</a>
+      <a class="linklike" style="display:block;margin-top:6px" onclick="openChangeTeacherPassword()">تغییر رمز عبور</a>
+    </div>
+  </div>`;
+}
+
+function renderApp(){
+  const isAdmin = state.identity.role==='admin';
+  const toast = state.toast ? `<div class="toast">${esc(state.toast)}</div>` : '';
+  const modal = state._modal ? renderModal() : '';
+  const myTeacher = !isAdmin ? state.teachers[state.identity.teacherId] : null;
+  const mySubject = myTeacher ? (myTeacher.subjects[state.identity.activeClass] || '—') : '';
+  return `
+  <div class="topbar">
+    <div>
+      <div class="brand" style="font-size:22px">AKF</div>
+    </div>
+    <div style="text-align:left">
+      <div class="who">${esc(state.identity.name)} · ${isAdmin?'مدیر':'معلم'}${!isAdmin?' · '+esc(state.identity.activeClass)+' ('+esc(mySubject)+')':''}</div>
+      ${!isAdmin?`<a class="linklike" onclick="state.screen='classPicker';render()">تغییر کلاس</a> · <a class="linklike" onclick="openEditSubject(state.identity.activeClass)">ویرایش درس</a> · `:''}<a class="linklike" onclick="switchIdentity()">خروج</a>
+    </div>
+  </div>
+  <div class="tabbar">
+    ${isAdmin?`<button class="${state.tab==='dashboard'?'active':''}" onclick="state.tab='dashboard';state.selectedClass=null;render()">داشبورد</button>`:''}
+    <button class="${state.tab==='search'?'active':''}" onclick="state.tab='search';render()">جستجوی دانش‌آموز</button>
+    ${isAdmin?`<button class="${state.tab==='settings'?'active':''}" onclick="state.tab='settings';render()">تنظیمات</button>`:''}
+  </div>
+  ${state.tab==='dashboard' && isAdmin ? renderDashboard() : ''}
+  ${state.tab==='search' ? renderSearch() : ''}
+  ${state.tab==='settings' && isAdmin ? renderSettings() : ''}
+  ${toast}${modal}
+  `;
+}
+
+function renderDashboard(){
+  if(state.selectedClass) return renderClassView(state.selectedClass);
+  if(state.classes.length===0){
+    return `<div class="card" style="text-align:center">
+      <h3>هنوز کلاسی ثبت نشده</h3>
+      <p>از تب «تنظیمات» یک کلاس اضافه کنید (مثلاً ۷/۳) و سپس اسامی دانش‌آموزان را وارد کنید.</p>
+      <button class="primary" onclick="state.tab='settings';render()">رفتن به تنظیمات</button>
+    </div>`;
+  }
+  const q = (state._classFilter||'').trim();
+  const sc = [...state.classes].sort((a,b)=>a.localeCompare(b,'fa'));
+  const visibleClasses = q ? sc.filter(c=>c.includes(q)) : sc;
+  return `
+  ${state.classes.length>8?`<div class="card" style="padding:12px">
+    <input id="class-filter-input" value="${q}" oninput="state._classFilter=this.value;render()" placeholder="جستجوی کلاس (مثلاً ۷/۳)…">
+  </div>`:''}
+  <div class="grid">
+    ${visibleClasses.length===0?'<p class="subtle">کلاسی با این نام یافت نشد.</p>':
+      visibleClasses.map(cls=>{
+        const count = Object.values(state.students).filter(s=>s.class===cls).length;
+        const teacherCount = teachersInClass(cls).length;
+        const ai = state.aiSuggestions[cls];
+        return `<div class="card class-card" onclick="state.selectedClass='${cls}';render()">
+          <h3>${esc(cls)}</h3>
+          <p class="subtle">${count} دانش‌آموز · ${teacherCount} معلم${ai?` · مهر هوش مصنوعی: ${ai.date}`:''}</p>
+        </div>`;
+      }).join('')}
+  </div>`;
+}
+
+function renderClassView(cls){
+  const students = Object.values(state.students).filter(s=>s.class===cls);
+  const teachers = teachersInClass(cls);
+  const ai = state.aiSuggestions[cls];
+  const aiTopIds = ai ? ai.students.map(s=>s.id) : [];
+  return `
+  <a class="linklike" onclick="state.selectedClass=null;render()">← بازگشت به داشبورد</a>
+  <div class="card" style="margin-top:10px">
+    <h2>${esc(cls)}</h2>
+    <div class="stamp-row" style="margin:8px 0;flex-wrap:wrap">
+      ${teachers.length===0?'<span class="subtle">هنوز معلمی وارد این کلاس نشده.</span>':
+        teachers.map(t=>`${stampEl(t.color,t.shape)} <span class="subtle" style="margin-left:8px">${esc(teacherLabel(t, cls))}</span>`).join('&nbsp;&nbsp;')}
+    </div>
+    <p class="subtle">${teachers.length} معلم ثبت‌شده${teachers.length<3?' (پیشنهاد می‌شود حداقل ۳ معلم برای هر کلاس ثبت شود)':''}</p>
+    <div class="row" style="margin-top:10px">
+      <button class="ghost" onclick="openAddStudent('${cls}')">افزودن دانش‌آموز</button>
+      <button class="gold" onclick="runAIStamp('${cls}')">مهر هوش مصنوعی داخلی (۵ نفر برتر)</button>
+    </div>
+    ${ai?`<p class="subtle" style="margin-top:8px">آخرین به‌روزرسانی: ${ai.date}</p>`:''}
+  </div>
+  <div class="card">
+    <h3>دانش‌آموزان</h3>
+    ${students.length===0?'<p class="subtle">هنوز دانش‌آموزی ثبت نشده.</p>':
+      students.map(s=>`
+        <div class="student-row" onclick="openStudent('${s.id}')">
+          <span>${esc(s.name)} ${aiTopIds.includes(s.id)?'<span class="ai-badge">★ هوش مصنوعی</span>':''}</span>
+          <span class="subtle">›</span>
+        </div>
+      `).join('')}
+  </div>`;
+}
+
+function renderSearch(){
+  const q = state._searchQuery || '';
+  const isAdmin = state.identity.role==='admin';
+  const pool = Object.values(state.students).filter(s => isAdmin || (state.identity.classes||[]).includes(s.class));
+  const results = q.trim() ? pool.filter(s=>s.name.includes(q) || s.class.includes(q)) : pool;
+  return `
+  <div class="card">
+    <label>جستجوی دانش‌آموز (نام یا کلاس)</label>
+    <input id="search-input" value="${q}" oninput="state._searchQuery=this.value;render()" placeholder="نام دانش‌آموز…">
+  </div>
+  <div class="card">
+    ${results.length===0?'<p class="subtle">نتیجه‌ای یافت نشد.</p>':
+      results.map(s=>{
+        const ai = state.aiSuggestions[s.class];
+        const isTop = ai && ai.students.some(x=>x.id===s.id);
+        return `<div class="student-row" onclick="openStudent('${s.id}')">
+          <span>${esc(s.name)} <span class="tag">${esc(s.class)}</span> ${isTop?'<span class="ai-badge">★</span>':''}</span>
+          <span class="subtle">›</span>
+        </div>`;
+      }).join('')}
+  </div>`;
+}
+
+function renderSettings(){
+  const bulkStuLog = state._bulkStudentLog;
+  const bulkTeaLog = state._bulkTeacherLog;
+  return `
+  <div class="card">
+    <h3>مدیریت کلاس‌ها</h3>
+    <div class="row">
+      <input id="new-class-name" placeholder="مثلاً ۷/۳" onkeydown="if(event.key==='Enter')addClass()">
+      <button class="primary" onclick="addClass()">افزودن</button>
+    </div>
+    <p class="subtle" style="margin-top:6px">پس از افزودن کلاس، از داشبورد وارد آن کلاس شوید یا از ابزار افزودن گروهی زیر استفاده کنید.</p>
+    <div class="chip-list">
+      ${sortedClasses().map(c=>`<span class="chip">${esc(c)} <button onclick="removeClass('${c}')">✕</button></span>`).join('')}
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>افزودن گروهی دانش‌آموزان</h3>
+    <p class="subtle">یک کلاس را انتخاب کنید و اسامی را هرکدام در یک خط وارد کنید (تا صدها نفر هم‌زمان).</p>
+    <label>کلاس</label>
+    <select id="bulk-student-class">
+      <option value="">— انتخاب کنید —</option>
+      ${sortedClasses().map(c=>`<option value="${c}" ${state._bulkStudentClass===c?'selected':''}>${c}</option>`).join('')}
+    </select>
+    <label>اسامی (هر خط یک نفر)</label>
+    <textarea id="bulk-student-names" rows="6" placeholder="علی رضایی
+مریم احمدی
+...">${state._bulkStudentText||''}</textarea>
+    <div class="row" style="margin-top:10px">
+      <button class="seal" id="bulk-student-btn" onclick="submitBulkStudents()">افزودن گروهی</button>
+    </div>
+    ${bulkStuLog?`<p class="subtle" style="margin-top:8px">${esc(bulkStuLog)}</p>`:''}
+  </div>
+
+  <div class="card">
+    <h3>افزودن گروهی معلمان</h3>
+    <p class="subtle">هر خط را به این شکل وارد کنید: <b>نام معلم، کلاس، درس</b> — مثال: «آقای رضایی، ۷/۳، ریاضی». برای چند کلاس همان معلم، چند خط بنویسید. رنگ و طرح مهر به‌طور خودکار و یکتا اختصاص داده می‌شود. معلم اضافه‌شده باید یک‌بار با نام خودش وارد سامانه شود و رمز عبور خودش را بسازد.</p>
+    <label>لیست معلمان</label>
+    <textarea id="bulk-teacher-list" rows="6" placeholder="آقای رضایی، ۷/۳، ریاضی
+خانم کریمی، ۷/۳، ادبیات فارسی
+...">${state._bulkTeacherText||''}</textarea>
+    <div class="row" style="margin-top:10px">
+      <button class="seal" id="bulk-teacher-btn" onclick="submitBulkTeachers()">افزودن گروهی</button>
+    </div>
+    ${bulkTeaLog?`<p class="subtle" style="margin-top:8px;white-space:pre-line">${esc(bulkTeaLog)}</p>`:''}
+  </div>
+
+  <div class="card">
+    <h3>پشتیبان‌گیری</h3>
+    <p class="subtle">دانلود یک فایل کامل از همهٔ کلاس‌ها، دانش‌آموزان، معلمان، نمرات، فعالیت‌ها و نظرات — برای نگهداری خارج از سایت. پیشنهاد می‌شود این کار را هر چند هفته یک‌بار تکرار کنید.</p>
+    <button class="primary" onclick="exportBackup()">دانلود فایل پشتیبان (JSON)</button>
+  </div>
+
+  <div class="card">
+    <h3>رمز مدیر</h3>
+    <p class="subtle">رمز مدیر از طریق Firebase مدیریت می‌شود. برای تغییرش: Firebase Console ← Authentication ← کاربر admin@akf-school.local ← بازنشانی رمز.</p>
+  </div>
+
+  <div class="card">
+    <h3>پاک‌سازی داده‌ها</h3>
+    <p class="subtle">کلاس‌ها، دانش‌آموزان، نظرات و مهرهای هوش مصنوعی پاک می‌شوند. پروفایل معلمان حفظ می‌شود. پیش از پاک‌سازی، حتماً یک فایل پشتیبان بگیرید.</p>
+    <button class="ghost" onclick="resetAllData()">پاک‌سازی همه داده‌ها</button>
+  </div>`;
+}
+
+// ---------- bulk import ----------
+async function submitBulkStudents(){
+  const cls = document.getElementById('bulk-student-class').value;
+  const raw = document.getElementById('bulk-student-names').value;
+  state._bulkStudentClass = cls;
+  state._bulkStudentText = raw;
+  if(!cls){ state._bulkStudentLog = 'ابتدا یک کلاس انتخاب کنید.'; render(); return; }
+  const names = raw.split('\n').map(n=>n.trim()).filter(Boolean);
+  if(names.length===0){ state._bulkStudentLog = 'هیچ نامی وارد نشده.'; render(); return; }
+
+  const btn = document.getElementById('bulk-student-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="loader"></span> در حال ذخیره…';
+
+  const existingNames = new Set(Object.values(state.students).filter(s=>s.class===cls).map(s=>s.name));
+  let added=0, skippedDup=0;
+  const seenThisBatch = new Set();
+  const toSave = [];
+  names.forEach(name=>{
+    if(existingNames.has(name) || seenThisBatch.has(name)){ skippedDup++; return; }
+    seenThisBatch.add(name);
+    const id = uid();
+    toSave.push({ id, name, class: cls, grades:{'ترم ۱': 0}, activities:{}, projects:{}, honors:{} });
+    added++;
+  });
+
+  try{
+    // batched Firestore write — hundreds of students go in as a handful of batch commits,
+    // not hundreds of separate round-trips
+    const chunkSize = 450;
+    for(let i=0;i<toSave.length;i+=chunkSize){
+      const batch = db.batch();
+      toSave.slice(i,i+chunkSize).forEach(s=>batch.set(db.collection('students').doc(s.id), s));
+      await batch.commit();
+    }
+    state._bulkStudentLog = `${added} دانش‌آموز اضافه شد.${skippedDup?` (${skippedDup} مورد به‌دلیل نام تکراری رد شد)`:''}`;
+    state._bulkStudentText = '';
+    showToast(`${added} دانش‌آموز در «${cls}» ذخیره شد.`);
+  }catch(e){
+    console.error('bulk student save failed', e);
+    state._bulkStudentLog = 'خطا در ذخیره‌سازی: ' + (e.code || e.message || 'اتصال برقرار نشد. دوباره تلاش کنید.');
+  }
+  render();
+}
+
+async function submitBulkTeachers(){
+  const raw = document.getElementById('bulk-teacher-list').value;
+  state._bulkTeacherText = raw;
+  const lines = raw.split('\n').map(l=>l.trim()).filter(Boolean);
+  if(lines.length===0){ state._bulkTeacherLog = 'هیچ خطی وارد نشده.'; render(); return; }
+
+  const btn = document.getElementById('bulk-teacher-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="loader"></span> در حال ذخیره…';
+
+  const errors = [];
+  let added=0, updated=0;
+  const toSave = new Map(); // name -> pending-teacher object
+  // tracks every color+shape combo already in use, INCLUDING ones just handed out
+  // earlier in this same paste — otherwise two brand-new teachers added in one
+  // batch could randomly get the exact same stamp
+  const usedCombos = new Set(Object.values(state.teachers).map(t=>t.color+t.shape));
+
+  lines.forEach((line, idx)=>{
+    const parts = line.split('،').map(p=>p.trim()).length>1
+      ? line.split('،').map(p=>p.trim())
+      : line.split(',').map(p=>p.trim());
+    if(parts.length<3 || !parts[0] || !parts[1] || !parts[2]){
+      errors.push(`خط ${idx+1}: قالب نادرست — «نام، کلاس، درس» لازم است.`);
+      return;
+    }
+    const [name, cls, subject] = parts;
+    if(!state.classes.includes(cls)){
+      errors.push(`خط ${idx+1}: کلاس «${cls}» وجود ندارد.`);
+      return;
+    }
+    if(!SUBJECTS.includes(subject)){
+      errors.push(`خط ${idx+1}: درس «${subject}» در فهرست دروس نیست.`);
+      return;
+    }
+
+    const alreadyRegistered = Object.values(state.teachers).find(t=>t.name===name);
+    if(alreadyRegistered){
+      // teacher already has a real account — just add the class/subject to their profile
+      if(!alreadyRegistered.classes.includes(cls)) alreadyRegistered.classes.push(cls);
+      alreadyRegistered.subjects[cls] = subject;
+      toSave.set('acct:'+alreadyRegistered.id, {kind:'account', teacher: alreadyRegistered});
+      updated++;
+      return;
+    }
+
+    let pending = toSave.get('pend:'+name);
+    if(pending){
+      if(!pending.data.classes.includes(cls)) pending.data.classes.push(cls);
+      pending.data.subjects[cls] = subject;
+      return;
+    }
+    let color, shape, tries=0;
+    do{
+      color = STAMP_COLORS[Math.floor(Math.random()*STAMP_COLORS.length)];
+      shape = STAMP_SHAPES[Math.floor(Math.random()*STAMP_SHAPES.length)];
+      tries++;
+    } while(usedCombos.has(color+shape) && tries<600);
+    usedCombos.add(color+shape);
+    toSave.set('pend:'+name, {kind:'pending', data:{id:uid(), name, classes:[cls], color, shape, subjects:{[cls]:subject}}});
+    added++;
+  });
+
+  try{
+    for(const entry of toSave.values()){
+      if(entry.kind==='account') await saveTeacher(entry.teacher);
+      else await savePendingTeacher(entry.data);
+    }
+    let log = `${added} معلم جدید اضافه شد`;
+    if(updated) log += `، ${updated} معلم موجود به‌روزرسانی شد`;
+    log += '.';
+    if(errors.length) log += `\n\n⚠ ${errors.length} خط رد شد:\n` + errors.join('\n');
+    log += '\n\nمعلمان جدید باید یک‌بار با نام خودشان وارد سامانه شوند تا رمز عبور خودشان را بسازند.';
+    state._bulkTeacherLog = log;
+    state._bulkTeacherText = '';
+    showToast(`${added+updated} مورد ذخیره شد.`);
+  }catch(e){
+    console.error('bulk teacher save failed', e);
+    state._bulkTeacherLog = 'خطا در ذخیره‌سازی: ' + (e.code || e.message || 'اتصال برقرار نشد. دوباره تلاش کنید.');
+  }
+  render();
+}
+
+function renderModal(){
+  if(state._modal==='editSubject'){
+    const cls = state._editSubjectClass;
+    return `<div class="modal-bg" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <button class="close-x" onclick="closeModal()">✕</button>
+        <h3>درس شما در ${esc(cls)}</h3>
+        <p class="subtle">این درس در مهرِ نظراتی که برای این کلاس ثبت می‌کنید نمایش داده می‌شود.</p>
+        <label>درس</label>
+        <select id="edit-subject-select" onchange="state._editSubjectValue=this.value">
+          <option value="">— انتخاب کنید —</option>
+          ${SUBJECTS.map(su=>`<option value="${su}" ${state._editSubjectValue===su?'selected':''}>${su}</option>`).join('')}
+        </select>
+        <div class="row" style="margin-top:14px">
+          <button class="ghost" onclick="closeModal()">انصراف</button>
+          <button class="seal" onclick="submitEditSubject()">ذخیره</button>
+        </div>
+      </div>
+    </div>`;
+  }
+  if(state._modal==='changePassword'){
+    return `<div class="modal-bg" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <button class="close-x" onclick="closeModal()">✕</button>
+        <h3>تغییر رمز عبور</h3>
+        <label>رمز فعلی</label>
+        <input id="tpw-current" type="password" placeholder="رمز فعلی">
+        <label>رمز جدید (حداقل ۶ کاراکتر)</label>
+        <input id="tpw-new" type="password" placeholder="رمز جدید">
+        <label>تکرار رمز جدید</label>
+        <input id="tpw-new2" type="password" placeholder="رمز جدید را دوباره وارد کنید">
+        <div id="tpw-err" class="err"></div>
+        <div class="row" style="margin-top:14px">
+          <button class="ghost" onclick="closeModal()">انصراف</button>
+          <button class="seal" onclick="submitChangeTeacherPassword()">ذخیره</button>
+        </div>
+      </div>
+    </div>`;
+  }
+  if(state._modal==='addStudent'){
+    return `<div class="modal-bg" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <button class="close-x" onclick="closeModal()">✕</button>
+        <h3>افزودن دانش‌آموز به ${esc(state._newStudentClass)}</h3>
+        <label>نام و نام خانوادگی</label>
+        <input id="as-name" placeholder="نام دانش‌آموز" onkeydown="if(event.key==='Enter')submitAddStudent()">
+        <div class="row" style="margin-top:14px">
+          <button class="seal" id="as-submit-btn" onclick="submitAddStudent()">ذخیره</button>
+        </div>
+      </div>
+    </div>`;
+  }
+  if(state._modal==='student'){
+    const s = state.students[state.selectedStudentId];
+    if(!s) return '';
+    const isAdmin = state.identity.role==='admin';
+    const myTeacher = !isAdmin ? state.teachers[state.identity.teacherId] : null;
+    const subject = state._modalSubject || '';
+    const canManage = isAdmin ? !!subject
+      : !!(state.identity.role==='teacher' && (state.identity.classes||[]).includes(s.class) && myTeacher && myTeacher.subjects[s.class]===subject && subject);
+    const canComment = !isAdmin && (state.identity.classes||[]).includes(s.class);
+    const studentComments = state.comments.filter(c=>c.studentId===s.id);
+    const ai = state.aiSuggestions[s.class];
+    const aiEntry = ai && ai.students.find(x=>x.id===s.id);
+    return `<div class="modal-bg" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <button class="close-x" onclick="closeModal()">✕</button>
+        <h2>${esc(s.name)} ${aiEntry?'<span class="ai-badge">★ منتخب هوش مصنوعی</span>':''}</h2>
+        <p class="subtle">${esc(s.class)}</p>
+        ${aiEntry?`<p class="subtle" style="color:#8a6a12">دلیل: ${esc(aiEntry.reason)}</p>`:''}
+
+        <h3 style="margin-top:16px">روند عملکرد سالانه</h3>
+        ${performanceChartSVG(s.grades)}
+        ${(isAdmin || (state.identity.role==='teacher' && (state.identity.classes||[]).includes(s.class)))?`
+          <div class="row">
+            <input id="grade-term-name" placeholder="نام ترم (مثلاً ترم ۴)">
+            <input id="grade-term-val" type="number" min="0" max="20" placeholder="نمره از ۲۰">
+            <button class="ghost" onclick="addGradeTerm()">افزودن</button>
+          </div>
+        `:''}
+
+        <h3 style="margin-top:16px">فعالیت‌ها، پروژه‌ها و افتخارات</h3>
+        <p class="subtle">هر معلم فقط فعالیت‌های درسِ خودش را می‌بیند و ثبت می‌کند؛ این‌ها بین درس‌های مختلف مشترک نیستند.</p>
+        ${isAdmin ? `
+          <label>نمایش/ثبت برای درس</label>
+          <select onchange="changeModalSubject(this.value)">
+            <option value="">— یک درس را انتخاب کنید —</option>
+            ${SUBJECTS.map(su=>`<option value="${su}" ${subject===su?'selected':''}>${su}</option>`).join('')}
+          </select>
+          ${!subject?'<p class="subtle" style="margin-top:6px">برای دیدن یا افزودن مورد جدید، ابتدا یک درس را از بالا انتخاب کنید.</p>':''}
+        ` : `<p class="subtle">درسِ شما: <b style="color:var(--ink)">${esc(subject) || '— برای شما ثبت نشده —'}</b></p>`}
+
+        <h4 style="margin-top:14px;font-size:14px;font-weight:700">فعالیت‌ها ${subject?`<span class="tag">${subject}</span>`:''}</h4>
+        <div class="chip-list">
+          ${(subject ? (s.activities[subject]||[]) : []).map((a,i)=>`<span class="chip">${esc(a)} ${canManage?`<button onclick="removeChip('activities',${i})">✕</button>`:''}</span>`).join('') || '<span class="subtle">ثبت نشده</span>'}
+        </div>
+        ${canManage?`<div class="row" style="margin-top:8px"><input id="chip-input-activities" placeholder="فعالیت جدید"><button class="ghost" onclick="addChip('activities')">افزودن</button></div>`:''}
+
+        <h4 style="margin-top:14px;font-size:14px;font-weight:700">پروژه‌ها ${subject?`<span class="tag">${subject}</span>`:''}</h4>
+        <div class="chip-list">
+          ${(subject ? (s.projects[subject]||[]) : []).map((a,i)=>`<span class="chip">${esc(a)} ${canManage?`<button onclick="removeChip('projects',${i})">✕</button>`:''}</span>`).join('') || '<span class="subtle">ثبت نشده</span>'}
+        </div>
+        ${canManage?`<div class="row" style="margin-top:8px"><input id="chip-input-projects" placeholder="پروژه جدید"><button class="ghost" onclick="addChip('projects')">افزودن</button></div>`:''}
+
+        <h4 style="margin-top:14px;font-size:14px;font-weight:700">افتخارات ${subject?`<span class="tag">${subject}</span>`:''}</h4>
+        <div>
+          ${(subject ? (s.honors[subject]||[]) : []).map((a,i)=>`<span class="badge-honor">${esc(a)} ${canManage?`<button style="background:none;color:var(--seal)" onclick="removeChip('honors',${i})">✕</button>`:''}</span>`).join('') || '<span class="subtle">ثبت نشده</span>'}
+        </div>
+        ${canManage?`<div class="row" style="margin-top:8px"><input id="chip-input-honors" placeholder="افتخار جدید"><button class="ghost" onclick="addChip('honors')">افزودن</button></div>`:''}
+
+        <h3 style="margin-top:16px">نظرات و ارزیابی معلمان</h3>
+        ${studentComments.length===0?'<p class="subtle">نظری ثبت نشده.</p>':
+          studentComments.map(c=>{
+            const canRemoveThis = isAdmin || (state.identity.role==='teacher' && c.teacherId===state.identity.teacherId);
+            return `
+            <div class="comment" style="border-color:${c.color}">
+              <div class="meta">${stampEl(c.color,c.shape,'small')} <b>${esc(c.teacherName)}</b> · ${esc(c.date)}
+                ${canRemoveThis?`<a class="linklike" style="margin-right:auto" onclick="deleteComment('${c.id}')">برداشتن مهر</a>`:''}
+              </div>
+              <div>${esc(c.text)}</div>
+            </div>
+          `;}).join('')}
+        ${canComment?`
+          <label style="margin-top:10px">ثبت نظر جدید</label>
+          <textarea id="comment-text" rows="3" placeholder="ارزیابی خود را بنویسید…"></textarea>
+          <button class="seal" style="margin-top:8px" onclick="submitComment()">ثبت با مهر من</button>
+        `:''}
+      </div>
+    </div>`;
+  }
+  return '';
+}
+</script>
+</body>
+</html>
