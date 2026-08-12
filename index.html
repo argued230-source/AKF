@@ -403,14 +403,9 @@ async function submitAdminLogin(){
     await auth.signInWithEmailAndPassword(ADMIN_EMAIL, pw);
   }catch(e){
     console.error('admin login failed:', e.code, e.message);
-    if(e.code === 'auth/user-not-found'){
-      // No admin account exists yet in Firebase — offer a ONE-TIME setup so the
-      // school doesn't need to touch the Firebase console directly.
-      state._adminSetupOffer = pw;
-      render();
-    } else {
-      document.getElementById('login-err').textContent = 'رمز مدیر اشتباه است.';
-    }
+    document.getElementById('login-err').textContent = 'خطا: ' + e.code;
+    state._adminSetupOffer = pw;
+    render();
   }
   btn.disabled = false;
 }
@@ -425,7 +420,7 @@ async function setupAdminAccount(){
     // onAuthStateChanged takes it from here — admin is now signed in for real
   }catch(e){
     console.error('admin setup failed:', e.code, e.message);
-    document.getElementById('login-err').textContent = 'ساخت حساب مدیر ناموفق بود: ' + (e.message||'');
+    document.getElementById('login-err').textContent = 'خطا: ' + e.code;
     state._adminSetupOffer = false;
     render();
   }
