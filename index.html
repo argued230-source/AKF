@@ -100,7 +100,7 @@ th{color:var(--ink-soft);font-weight:600;}
 .loader{display:inline-block;width:16px;height:16px;border:2.5px solid #fff;border-top-color:transparent;
   border-radius:50%;animation:spin .7s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg);}}
-.err{color:var(--seal);font-size:13px;margin-top:6px;}
+.err{color:var(--seal);font-size:13px;margin-top:6px;white-space:pre-line;line-height:1.7;}
 .chip-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
 .chip{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px;
   display:flex;align-items:center;gap:6px;}
@@ -186,6 +186,18 @@ if (!window.__fbInitFailed) {
 // The one admin account for this school. Create this exact user, with a
 // password only you know, in: Firebase Console → Authentication → Users → Add user.
 const ADMIN_EMAIL = 'admin@akf-school.local';
+
+// Firebase's own `auth/network-request-failed` fires for several very
+// different underlying causes (real internet outage, an ad-blocker/VPN
+// extension silently blocking the request to googleapis.com, or — most
+// common for users in Iran — googleapis.com/identitytoolkit being filtered
+// even though the rest of the internet works fine). A single vague "check
+// your internet" message sent people in circles, so this spells out the
+// likely causes and what to actually try.
+const NETWORK_ERR_MSG = 'اتصال به سرویس ورود (Firebase) برقرار نشد. معمولاً یکی از این‌هاست:\n' +
+  '۱) اگر بقیه‌ی اینترنت کار می‌کند ولی این خطا می‌آید، احتمالاً سرویس گوگل (identitytoolkit.googleapis.com) فیلتر یا مسدود است — یک فیلترشکن/VPN فعال کنید و دوباره امتحان کنید.\n' +
+  '۲) اگر افزونه‌ی ad-block یا VPN مرورگر روشن است، آن را موقتاً خاموش کنید.\n' +
+  '۳) اگر هیچ‌کدام نبود، اتصال اینترنت را بررسی کنید.';
 
 // Teachers log in with just their name, never an email. Firebase Auth still needs
 // an email internally, so we derive a stable, unguessable one from the teacher's
@@ -425,7 +437,7 @@ async function submitAdminLogin(){
     } else if(e.code === 'auth/too-many-requests'){
       state._loginErr = 'تعداد تلاش‌ها زیاد بوده — کمی صبر کنید و دوباره تلاش کنید.';
     } else if(e.code === 'auth/network-request-failed'){
-      state._loginErr = 'اتصال اینترنت برقرار نیست. اتصال را بررسی کنید.';
+      state._loginErr = NETWORK_ERR_MSG;
     } else {
       state._loginErr = 'خطا: ' + e.code;
     }
@@ -450,7 +462,7 @@ async function setupAdminAccount(){
     if(e.code === 'auth/email-already-in-use'){
       state._loginErr = 'حساب مدیر از قبل ساخته شده — رمزی که زدید اشتباه است. رمز درست را وارد کنید.';
     } else if(e.code === 'auth/network-request-failed'){
-      state._loginErr = 'اتصال اینترنت برقرار نیست. اتصال را بررسی کنید.';
+      state._loginErr = NETWORK_ERR_MSG;
     } else {
       state._loginErr = 'خطا: ' + e.code;
     }
@@ -509,7 +521,7 @@ async function submitTeacherLogin(){
         }
       }
     } else if(e.code === 'auth/network-request-failed'){
-      state._loginErr = 'اتصال اینترنت برقرار نیست. اتصال را بررسی کنید.';
+      state._loginErr = NETWORK_ERR_MSG;
     } else {
       state._loginErr = 'رمز اشتباه است.';
     }
