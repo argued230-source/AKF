@@ -175,6 +175,12 @@ if (!window.__fbInitFailed) {
   auth = firebase.auth();
   db = firebase.firestore();
   db.enablePersistence({synchronizeTabs:true}).catch(()=>{}); // offline cache: keeps working (read-only) if wifi drops briefly
+  // Force LOCAL persistence explicitly instead of relying on the SDK default —
+  // some Firebase JS SDK versions/browsers don't reliably fall back to LOCAL
+  // on their own, which was causing the login screen to reappear on every visit.
+  auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch((e)=>{
+    console.error('auth persistence setup failed:', e.code, e.message);
+  });
 }
 
 // The one admin account for this school. Create this exact user, with a
@@ -403,8 +409,23 @@ async function submitAdminLogin(){
     await auth.signInWithEmailAndPassword(ADMIN_EMAIL, pw);
   }catch(e){
     console.error('admin login failed:', e.code, e.message);
-    document.getElementById('login-err').textContent = 'خطا: ' + e.code;
-    state._adminSetupOffer = pw;
+    // Only offer "create admin account" for errors that genuinely mean the
+    // account doesn't exist yet. Any other error (wrong password, disabled
+    // sign-in method, unauthorized domain, network issue, etc.) must show
+    // as a real error instead — otherwise clicking "create account" just
+    // repeats the same underlying failure forever.
+    const notFoundCodes = ['auth/user-not-found'];
+    if(notFoundCodes.includes(e.code)){
+      state._adminSetupOffer = pw;
+    } else if(e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password'){
+      document.getElementById('login-err').textContent = 'رمز اشتباه است، یا اگر اولین‌بار است، این خطا یعنی هنوز حساب مدیر ساخته نشده — با ادمین فنی تماس بگیرید.';
+    } else if(e.code === 'auth/unauthorized-domain'){
+      document.getElementById('login-err').textContent = 'این آدرس سایت در Firebase مجاز نشده (Authorized domains). با سازنده‌ی سایت تماس بگیرید.';
+    } else if(e.code === 'auth/operation-not-allowed'){
+      document.getElementById('login-err').textContent = 'روش ورود با رمز عبور در Firebase فعال نیست. با سازنده‌ی سایت تماس بگیرید.';
+    } else {
+      document.getElementById('login-err').textContent = 'خطا: ' + e.code;
+    }
     render();
   }
   btn.disabled = false;
