@@ -187,6 +187,222 @@ if (!window.__fbInitFailed) {
 // password only you know, in: Firebase Console → Authentication → Users → Add user.
 const ADMIN_EMAIL = 'admin@akf-school.local';
 
+// ---------- IP-based abuse tracking ----------
+// This is a best-effort deterrent, not a hard security boundary: the IP is
+// read from a free public lookup service from the browser itself, so a
+// determined person on a VPN can get a new IP. It's meant to slow down and
+// flag repeated failed-login abuse from an ordinary user/device, not to
+// replace real server-side rate limiting (which this static single-file
+// site has no backend to provide).
+let __cachedClientIP = null;
+async function getClientIP(){
+  if(__cachedClientIP) return __cachedClientIP;
+  try{
+    // Hard timeout: IP lookup is a nice-to-have for abuse tracking, never a
+    // login blocker. If the lookup service is slow or filtered (the same
+    // network conditions that can block Firebase itself), login must still
+    // proceed — so this races the fetch against a short timeout instead of
+    // letting a hung request freeze the login button indefinitely.
+    const controller = new AbortController();
+    const timeout = setTimeout(()=>controller.abort(), 3000);
+    const res = await fetch('https://api.ipify.org?format=json', {signal: controller.signal});
+    clearTimeout(timeout);
+    if(!res.ok) return null;
+    const data = await res.json();
+    __cachedClientIP = data.ip || null;
+    return __cachedClientIP;
+  }catch(e){
+    console.warn('IP lookup failed or timed out (offline/filtered) — abuse tracking skipped for this attempt', e);
+    return null;
+  }
+}
+
+const FAILED_ATTEMPT_LIMIT = 5;       // failed logins allowed before an IP is auto-flagged
+const FAILED_ATTEMPT_WINDOW_MIN = 15; // window (minutes) those attempts must fall within
+
+async function isIPBanned(ip){
+  if(!ip) return false;
+  try{
+    const doc = await db.collection('bannedIPs').doc(ip).get();
+    return doc.exists && doc.data().banned === true;
+  }catch(e){ console.warn('ban check failed', e); return false; }
+}
+
+// Records one failed login attempt for this IP, and if it crosses the
+// threshold within the time window, auto-bans the IP (admin can unban from
+// Settings). Never blocks or throws on failure — logging abuse must never
+// be the reason a legitimate login breaks.
+async function recordFailedAttempt(ip, context){
+  if(!ip) return;
+  try{
+    const ref = db.collection('loginAttempts').doc(ip);
+    const now = Date.now();
+    const windowMs = FAILED_ATTEMPT_WINDOW_MIN*60*1000;
+    // Each attempt is tagged with time PLUS a random component. arrayUnion
+    // treats equal values as a single element (that's genuinely how it
+    // behaves, not a quirk of this mock) — and Date.now() has millisecond
+    // resolution, so two attempts landing in the same millisecond (very
+    // possible with several teachers on the same school wifi failing login
+    // around the same moment) would otherwise silently collapse into one
+    // recorded attempt. The random suffix keeps every attempt distinct while
+    // the numeric prefix keeps entries sortable/comparable by time.
+    const marker = now + Math.random();
+    await ref.set({
+      attempts: firebase.firestore.FieldValue.arrayUnion(marker),
+      lastContext: context||'', lastAt: now
+    }, {merge:true});
+    // Trim old entries outside the window in a separate best-effort pass —
+    // safe to do non-atomically since trimming only ever removes stale data;
+    // in the rare case two trims race, the worst outcome is a stale entry
+    // surviving one extra round-trip, never an undercount of real attempts.
+    const doc = await ref.get();
+    const attempts = (doc.exists && Array.isArray(doc.data().attempts)) ? doc.data().attempts : [marker];
+    const recent = attempts.filter(t => now - Math.floor(t) < windowMs);
+    if(recent.length !== attempts.length){
+      await ref.set({attempts: recent}, {merge:true});
+    }
+    if(recent.length >= FAILED_ATTEMPT_LIMIT){
+      await db.collection('bannedIPs').doc(ip).set({
+        banned: true, reason: `${recent.length} تلاش ناموفق ورود در ${FAILED_ATTEMPT_WINDOW_MIN} دقیقه`,
+        bannedAt: now, lastContext: context||''
+      });
+    }
+  }catch(e){ console.warn('recordFailedAttempt failed (non-blocking)', e); }
+}
+async function clearFailedAttempts(ip){
+  if(!ip) return;
+  try{ await db.collection('loginAttempts').doc(ip).delete(); }catch(e){ /* non-critical */ }
+}
+async function unbanIP(ip){
+  try{
+    await db.collection('bannedIPs').doc(ip).delete();
+    await db.collection('loginAttempts').doc(ip).delete();
+    showToast(`IP ${ip} از حالت مسدود خارج شد.`);
+    state._bannedIPsList = state._bannedIPsList.filter(b=>b.id!==ip);
+    render();
+  }catch(e){ showToast('خطا در رفع مسدودی.'); console.error(e); }
+}
+async function loadBannedIPs(){
+  try{
+    const snap = await db.collection('bannedIPs').get();
+    state._bannedIPsList = snap.docs.map(d=>({id:d.id, ...d.data()}));
+  }catch(e){ state._bannedIPsList = []; }
+  render();
+}
+
+// ---------- terms-of-use gate (پذیرش قوانین) ----------
+// Stored per-device in localStorage — this is a usage-policy acknowledgement,
+// not an identity check, so it's fine that it isn't tied to a specific login.
+const TERMS_VERSION = '1';
+function hasAcceptedTerms(){
+  try{ return localStorage.getItem('akf_terms_accepted') === TERMS_VERSION; }catch(_){ return false; }
+}
+function acceptTerms(){
+  try{ localStorage.setItem('akf_terms_accepted', TERMS_VERSION); }catch(_){ }
+  state.screen = 'login';
+  render();
+}
+
+// ---------- AI helper assistant (Groq — free tier, Llama 3.3 70B) ----------
+// The Groq API key lives only in this browser's localStorage (entered once by
+// the admin in Settings), never hard-coded in the file and never sent
+// anywhere except https://api.groq.com. Each user still gets asked once.
+function getGroqKey(){ try{ return localStorage.getItem('akf_groq_key') || ''; }catch(_){ return ''; } }
+function setGroqKey(k){ try{ localStorage.setItem('akf_groq_key', k||''); }catch(_){ } }
+
+// Builds a compact, plain-text summary of one student's real data from
+// Firestore-synced state — this is what actually lets the assistant answer
+// "how's Ali doing" instead of guessing, and it never sends the whole
+// school's data, only the one student being asked about.
+function buildStudentContext(s){
+  if(!s) return null;
+  const avg = overallAverage(s.grades);
+  const termLines = Object.entries(s.grades).filter(e=>computeTermAverage(e[1])!=null)
+    .map(([term,data])=>{
+      const d = typeof data==='number' ? {final:data} : (data||{});
+      const parts = GRADE_COMPONENTS.filter(c=>typeof d[c.key]==='number').map(c=>`${c.label}: ${d[c.key]}`);
+      return `- ${term}: معدل ${computeTermAverage(data).toFixed(2)}${parts.length?` (${parts.join('، ')})`:''}`;
+    });
+  const listAll = (obj) => Object.entries(obj||{}).flatMap(([subj,arr])=>(arr||[]).map(x=>`${subj}: ${x}`));
+  const activities = listAll(s.activities);
+  const projects = listAll(s.projects);
+  const honors = listAll(s.honors);
+  const comments = state.comments.filter(c=>c.studentId===s.id).map(c=>`- ${c.teacherName} (${c.date}): ${c.text}`);
+  const discipline = state.disciplinary.filter(d=>d.studentId===s.id).map(d=>`- ${d.teacherName} (${d.date}): ${d.text}`);
+  return [
+    `نام: ${s.name}`,
+    `کلاس: ${s.class}`,
+    avg!=null ? `معدل کل: ${avg.toFixed(2)} از ۲۰` : 'معدل کل: هنوز نمره‌ای ثبت نشده',
+    termLines.length ? `ریز نمرات هر ترم:\n${termLines.join('\n')}` : '',
+    activities.length ? `فعالیت‌ها:\n${activities.map(x=>'- '+x).join('\n')}` : '',
+    projects.length ? `پروژه‌ها:\n${projects.map(x=>'- '+x).join('\n')}` : '',
+    honors.length ? `افتخارات:\n${honors.map(x=>'- '+x).join('\n')}` : '',
+    comments.length ? `نظرات معلمان:\n${comments.join('\n')}` : '',
+    discipline.length ? `موارد انضباطی:\n${discipline.join('\n')}` : ''
+  ].filter(Boolean).join('\n\n');
+}
+
+// Finds the student(s) whose name is mentioned in the free-text question, so
+// the user can just ask "نمره علی رضایی چطوره؟" by name instead of picking
+// from a menu first.
+function findMentionedStudents(text){
+  const pool = Object.values(state.students).filter(s =>
+    state.identity.role==='admin' || (state.identity.classes||[]).includes(s.class));
+  const norm = t => String(t).replace(/[\u200c\s]+/g,' ').trim();
+  const q = norm(text);
+  const matches = pool.filter(s => q.includes(norm(s.name)));
+  if(matches.length) return matches.slice(0,3);
+  // fall back to partial name-word matches (e.g. just the first name)
+  const words = norm(text).split(' ').filter(w=>w.length>1);
+  const partial = pool.filter(s => { const nm=norm(s.name); return words.some(w=>nm.includes(w)); });
+  return partial.slice(0,3);
+}
+
+async function askAIAssistant(question){
+  const key = getGroqKey();
+  if(!key){
+    return {error: 'ابتدا در تنظیمات، کلید Groq API را وارد کنید (رایگان است؛ از console.groq.com بگیرید).'};
+  }
+  const mentioned = findMentionedStudents(question);
+  const contexts = mentioned.map(buildStudentContext).filter(Boolean);
+  const systemPrompt = 'تو دستیار هوشمند سامانه مدیریت مدرسه AKF هستی. فقط بر اساس اطلاعات واقعی داده‌شده دربارهٔ دانش‌آموزان جواب بده، هرگز عدد یا رویداد نساز. اگر اطلاعاتی داده نشده، صادقانه بگو که داده‌ای موجود نیست. پاسخ‌ها را کوتاه، دوستانه و به فارسی بده.';
+  const userContent = contexts.length
+    ? `اطلاعات دانش‌آموز(ها):\n\n${contexts.join('\n\n---\n\n')}\n\nسؤال کاربر: ${question}`
+    : `هیچ دانش‌آموز مشخصی در سؤال شناسایی نشد (شاید نام اشتباه تایپ شده یا در دسترس شما نیست). سؤال کاربر: ${question}\nبه‌طور کلی و مودبانه پاسخ بده و از او بخواه نام کامل دانش‌آموز را دقیق‌تر بنویسد.`;
+
+  try{
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + key
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          {role:'system', content: systemPrompt},
+          {role:'user', content: userContent}
+        ],
+        temperature: 0.4,
+        max_tokens: 700
+      })
+    });
+    if(!res.ok){
+      const errText = await res.text().catch(()=> '');
+      if(res.status===401) return {error:'کلید Groq API نامعتبر است. آن را در تنظیمات دوباره بررسی کنید.'};
+      if(res.status===429) return {error:'محدودیت درخواست رایگان Groq پر شده — کمی صبر کنید و دوباره امتحان کنید.'};
+      console.error('groq error', res.status, errText);
+      return {error:'پاسخ هوش مصنوعی دریافت نشد. اتصال اینترنت را بررسی کنید.'};
+    }
+    const data = await res.json();
+    const answer = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+    return {answer: answer || 'پاسخی دریافت نشد.', students: mentioned};
+  }catch(e){
+    console.error('groq fetch failed', e);
+    return {error:'اتصال به سرویس هوش مصنوعی برقرار نشد. اتصال اینترنت را بررسی کنید.'};
+  }
+}
+
 // Firebase's own `auth/network-request-failed` fires for several very
 // different underlying causes (real internet outage, an ad-blocker/VPN
 // extension silently blocking the request to googleapis.com, or — most
@@ -223,6 +439,32 @@ const STAMP_SHAPES = ['◆','●','■','✦','◈','▲','✚','❖','◉','★
 const SUBJECTS = ['ادبیات فارسی','عربی','دینی و قرآن','ریاضی','علوم تجربی','مطالعات اجتماعی',
   'زبان انگلیسی','هنر','تربیت‌بدنی','کار و فناوری','آمادگی دفاعی','تفکر و سبک زندگی','مشاوره و راهنما'];
 
+// grade breakdown components + weight of each toward the term's final average.
+// weights sum to 1 so the weighted average stays on the same 0-20 scale.
+const GRADE_COMPONENTS = [
+  {key:'ongoing',  label:'مستمر',  weight:0.35},
+  {key:'final',    label:'پایانی', weight:0.50},
+  {key:'activity', label:'مشارکت', weight:0.15}
+];
+function computeTermAverage(termData){
+  // supports both the old format (plain number) and the new breakdown format
+  // ({ongoing,final,activity}) so existing student records never break.
+  if(typeof termData === 'number') return termData;
+  if(!termData || typeof termData !== 'object') return null;
+  let sum=0, wUsed=0;
+  GRADE_COMPONENTS.forEach(c=>{
+    const v = termData[c.key];
+    if(typeof v === 'number' && !isNaN(v)){ sum += v*c.weight; wUsed += c.weight; }
+  });
+  if(wUsed===0) return null;
+  return sum/wUsed; // re-normalize so a term with only some components filled in is still fair
+}
+function overallAverage(grades){
+  const vals = Object.values(grades||{}).map(computeTermAverage).filter(v=>typeof v==='number' && !isNaN(v));
+  if(vals.length===0) return null;
+  return vals.reduce((a,b)=>a+b,0)/vals.length;
+}
+
 function teacherLabel(teacher, cls){
   const subject = teacher.subjects && teacher.subjects[cls];
   return subject ? `${teacher.name} — معلم ${subject}` : teacher.name;
@@ -230,13 +472,15 @@ function teacherLabel(teacher, cls){
 
 let state = {
   screen:'loading', // loading | login | claimPassword | identity | classPicker | app
-  identity:null,    // {role:'admin'|'teacher', name, teacherId, classes, activeClass}
-  classes:[], students:{}, teachers:{}, comments:[], aiSuggestions:{},
+  identity:null,    // {role:'admin'|'teacher', name, teacherId, classes, activeClass, isDeputy}
+  classes:[], students:{}, teachers:{}, comments:[], aiSuggestions:{}, disciplinary:[],
   tab:'dashboard',
   selectedClass:null,
   selectedStudentId:null,
   toast:null,
-  online:true
+  online:true,
+  aiChat:[], // {role:'user'|'assistant', text}
+  _bannedIPsList: []
 };
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
@@ -274,6 +518,8 @@ async function deleteStudentRecord(id){ delete state.students[id]; await fDelete
 async function deleteTeacherRecord(id){ delete state.teachers[id]; await fDelete('teachers', id); }
 async function saveComment(c){ await fSave('comments', c.id, c); }
 async function deleteCommentRecord(id){ await fDelete('comments', id); }
+async function saveDisciplinaryRecord(d){ await fSave('disciplinary', d.id, d); }
+async function deleteDisciplinaryRecord(id){ await fDelete('disciplinary', id); }
 async function saveAIForClass(cls, data){ state.aiSuggestions[cls]=data; await fSave('ai', cls, data); }
 async function deleteAIForClass(cls){ delete state.aiSuggestions[cls]; await fDelete('ai', cls); }
 async function savePendingTeacher(p){ await fSave('pendingTeachers', p.id, p); }
@@ -314,6 +560,11 @@ function startListening(){
     render();
   }, e=>console.error('comments listener', e)));
 
+  unsubscribers.push(db.collection('disciplinary').onSnapshot(snap=>{
+    state.disciplinary = snap.docs.map(d=>d.data());
+    render();
+  }, e=>console.error('disciplinary listener', e)));
+
   unsubscribers.push(db.collection('ai').onSnapshot(snap=>{
     const map = {};
     snap.forEach(doc=>{ map[doc.id] = doc.data(); });
@@ -345,17 +596,22 @@ function normalizeData(){
   Object.values(state.teachers).forEach(t=>{
     if(!t.classes) t.classes = [];
     if(!t.subjects) t.subjects = {};
+    if(typeof t.isDeputy !== 'boolean') t.isDeputy = false;
   });
   Object.values(state.students).forEach(s=>{
     ['activities','projects','honors'].forEach(field=>{
       if(!s[field] || typeof s[field] !== 'object') s[field] = {};
     });
+    if(!s.grades || typeof s.grades !== 'object') s.grades = {};
   });
   if(state.identity && state.identity.role==='teacher'){
     const t = state.teachers[state.identity.teacherId];
     if(t){
-      state.identity.classes = t.classes;
-      if(!state.identity.activeClass) state.identity.activeClass = t.classes[0] || null;
+      // a deputy can see every class in the school (read-only outside their own
+      // teaching classes), a regular teacher only sees the classes they teach
+      state.identity.classes = t.isDeputy ? [...state.classes] : t.classes;
+      state.identity.isDeputy = !!t.isDeputy;
+      if(!state.identity.activeClass) state.identity.activeClass = t.classes[0] || state.classes[0] || null;
     }
   }
 }
@@ -369,7 +625,7 @@ auth.onAuthStateChanged(async (user)=>{
     state.identity = null;
     stopListening();
     startPublicListening(); // back at the login screen — restore the pre-login listeners so it can show classes/stamps again
-    state.screen = 'login';
+    state.screen = hasAcceptedTerms() ? 'login' : 'agreement';
     render();
     return;
   }
@@ -389,7 +645,7 @@ auth.onAuthStateChanged(async (user)=>{
       return;
     }
     const t = doc.data();
-    state.identity = {name:t.name, role:'teacher', teacherId:user.uid, classes:t.classes, activeClass:t.classes[0]||null};
+    state.identity = {name:t.name, role:'teacher', teacherId:user.uid, classes:t.classes, activeClass:t.classes[0]||null, isDeputy:!!t.isDeputy};
     startListening();
     state.screen = 'classPicker';
     render();
@@ -417,8 +673,17 @@ async function submitAdminLogin(){
   const btn = document.getElementById('admin-login-btn');
   btn.disabled = true;
   state._loginErr = '';
+
+  const ip = await getClientIP();
+  if(await isIPBanned(ip)){
+    state.screen = 'banned';
+    render();
+    return;
+  }
+
   try{
     await auth.signInWithEmailAndPassword(ADMIN_EMAIL, pw);
+    await clearFailedAttempts(ip);
   }catch(e){
     console.error('admin login failed:', e.code, e.message);
     // Only offer "create admin account" for errors that genuinely mean the
@@ -430,6 +695,7 @@ async function submitAdminLogin(){
     if(notFoundCodes.includes(e.code)){
       state._loginErr = 'رمز اشتباه است، یا اگر اولین‌بار است، هنوز حساب مدیر ساخته نشده.';
       state._adminSetupOffer = pw;
+      await recordFailedAttempt(ip, 'admin-login');
     } else if(e.code === 'auth/unauthorized-domain'){
       state._loginErr = 'این آدرس سایت در Firebase مجاز نشده (Authorized domains). با سازنده‌ی سایت تماس بگیرید.';
     } else if(e.code === 'auth/operation-not-allowed'){
@@ -440,7 +706,9 @@ async function submitAdminLogin(){
       state._loginErr = NETWORK_ERR_MSG;
     } else {
       state._loginErr = 'خطا: ' + e.code;
+      await recordFailedAttempt(ip, 'admin-login');
     }
+    if(await isIPBanned(ip)){ state.screen = 'banned'; render(); return; }
     btn.disabled = false;
     render();
     return;
@@ -503,8 +771,16 @@ async function submitTeacherLogin(){
   const btn = document.getElementById('teacher-login-btn');
   btn.disabled = true;
 
+  const ip = await getClientIP();
+  if(await isIPBanned(ip)){
+    state.screen = 'banned';
+    render();
+    return;
+  }
+
   try{
     await auth.signInWithEmailAndPassword(email, pw);
+    await clearFailedAttempts(ip);
   }catch(e){
     if(e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential'){
       const pending = await db.collection('pendingTeachers').where('name','==',name).limit(1).get();
@@ -515,6 +791,7 @@ async function submitTeacherLogin(){
         const existing = Object.values(state.teachers).find(t=>t.name===name);
         if(existing){
           state._loginErr = 'رمز اشتباه است.';
+          await recordFailedAttempt(ip, 'teacher-login:'+name);
         } else {
           state._pendingName = name;
           state.screen = 'identity';
@@ -524,7 +801,9 @@ async function submitTeacherLogin(){
       state._loginErr = NETWORK_ERR_MSG;
     } else {
       state._loginErr = 'رمز اشتباه است.';
+      await recordFailedAttempt(ip, 'teacher-login:'+name);
     }
+    if(await isIPBanned(ip)){ state.screen = 'banned'; render(); return; }
     render();
   }
   btn.disabled = false;
@@ -538,6 +817,10 @@ async function submitClaimPassword(){
   const err = document.getElementById('claim-err');
   if(pw.length < 6){ err.textContent = 'رمز باید حداقل ۶ کاراکتر باشد.'; return; }
   if(pw !== pw2){ err.textContent = 'تکرار رمز مطابقت ندارد.'; return; }
+
+  const ip = await getClientIP();
+  if(await isIPBanned(ip)){ state.screen = 'banned'; render(); return; }
+
   const pending = state._claimPendingDoc;
   const email = await nameToEmail(pending.name);
   try{
@@ -566,6 +849,10 @@ function sortedClasses(){
 async function submitIdentity(){
   const name = (state._pendingName||'').trim();
   if(!name){ document.getElementById('id-err').textContent='لطفاً نام خود را وارد کنید.'; return; }
+
+  const ip = await getClientIP();
+  if(await isIPBanned(ip)){ state.screen = 'banned'; render(); return; }
+
   const cls = state._pendingClass;
   if(!cls){ document.getElementById('id-err').textContent='لطفاً یک کلاس انتخاب کنید.'; return; }
   const subject = state._pendingSubject;
@@ -702,7 +989,7 @@ async function resetAllData(){
   const typed = prompt('این کار همهٔ کلاس‌ها، دانش‌آموزان، معلمان، نظرات و مهرها را برای همیشه پاک می‌کند و قابل بازگشت نیست.\nبرای تأیید، عبارت زیر را دقیقاً تایپ کنید:\nپاک کن');
   if(typed !== 'پاک کن'){ if(typed!==null) showToast('عبارت تأیید درست نبود؛ چیزی پاک نشد.'); return; }
   showToast('در حال پاک‌سازی…');
-  const cols = ['students','comments','ai','pendingTeachers'];
+  const cols = ['students','comments','ai','pendingTeachers','disciplinary'];
   for(const col of cols){
     const snap = await db.collection(col).get();
     let batch = db.batch(); let n=0;
@@ -727,6 +1014,7 @@ function exportBackup(){
     teachers: Object.values(state.teachers),
     students: state.students,
     comments: state.comments,
+    disciplinary: state.disciplinary,
     aiSuggestions: state.aiSuggestions
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
@@ -756,6 +1044,8 @@ async function removeClass(cls){
   state.classes = state.classes.filter(c=>c!==cls);
 
   const removedStudentIds = Object.keys(state.students).filter(id=>state.students[id].class===cls);
+  const orphanedCommentIds = state.comments.filter(c=>removedStudentIds.includes(c.studentId)).map(c=>c.id);
+  const orphanedDisciplinaryIds = state.disciplinary.filter(d=>removedStudentIds.includes(d.studentId)).map(d=>d.id);
   const affectedTeachers = Object.values(state.teachers).filter(t=>t.classes.includes(cls));
   const updatedTeachers = [];
   const removedTeacherIds = [];
@@ -768,11 +1058,47 @@ async function removeClass(cls){
   await Promise.all([
     saveClasses(),
     ...removedStudentIds.map(id=>deleteStudentRecord(id)),
+    ...orphanedCommentIds.map(id=>deleteCommentRecord(id)),
+    ...orphanedDisciplinaryIds.map(id=>deleteDisciplinaryRecord(id)),
     ...updatedTeachers.map(t=>saveTeacher(t)),
     ...removedTeacherIds.map(id=>deleteTeacherRecord(id)),
     deleteAIForClass(cls)
   ]);
   showToast(`کلاس «${cls}» حذف شد.`);
+  render();
+}
+
+// ---------- deputy (معاون) access: a deputy is a teacher flagged to see every
+// class read-only, in addition to whatever class(es) they actually teach ----------
+async function toggleDeputy(teacherId){
+  const t = state.teachers[teacherId];
+  if(!t) return;
+  t.isDeputy = !t.isDeputy;
+  await saveTeacher(t);
+  showToast(t.isDeputy ? `${t.name} اکنون دسترسی معاونت دارد.` : `دسترسی معاونت ${t.name} برداشته شد.`);
+  render();
+}
+async function removeTeacherFromSettings(teacherId){
+  const t = state.teachers[teacherId];
+  if(!t) return;
+  if(!confirm(`حساب «${t.name}» حذف شود؟ این معلم دیگر نمی‌تواند وارد سامانه شود.`)) return;
+  await deleteTeacherRecord(teacherId);
+  showToast(`حساب «${t.name}» حذف شد.`);
+  render();
+}
+
+// ---------- move a student between classes (کلاس‌بندی مجدد) ----------
+async function moveStudentToClass(studentId, newClass){
+  const s = state.students[studentId];
+  if(!s) return;
+  if(!newClass){ showToast('ابتدا کلاس مقصد را انتخاب کنید.'); return; }
+  if(newClass===s.class){ showToast('این دانش‌آموز از قبل در همین کلاس است.'); return; }
+  const dup = Object.values(state.students).some(x=>x.class===newClass && x.name===s.name && x.id!==s.id);
+  if(dup){ showToast(`دانش‌آموزی با نام «${s.name}» از قبل در «${newClass}» ثبت شده.`); return; }
+  s.class = newClass;
+  await saveStudent(s);
+  showToast(`${s.name} به کلاس ${newClass} منتقل شد.`);
+  state._modal = null;
   render();
 }
 
@@ -790,7 +1116,7 @@ async function submitAddStudent(){
   if(dup){ showToast('دانش‌آموزی با این نام از قبل در این کلاس ثبت شده.'); return; }
   btn.disabled = true;
   const id = uid();
-  const student = { id, name, class: state._newStudentClass, grades:{'ترم ۱': 0}, activities:{}, projects:{}, honors:{} };
+  const student = { id, name, class: state._newStudentClass, grades:{}, activities:{}, projects:{}, honors:{} };
   await saveStudent(student);
   state._modal = null;
   showToast('دانش‌آموز اضافه شد.');
@@ -815,16 +1141,49 @@ function openStudent(id){
 }
 function closeModal(){ state._modal = null; render(); }
 function changeModalSubject(val){ state._modalSubject = val; render(); }
+function openMoveStudent(id){
+  state.selectedStudentId = id;
+  state._moveTargetClass = '';
+  state._modal = 'moveStudent';
+  render();
+}
 
+function loadTermIntoForm(term){
+  const s = state.students[state.selectedStudentId];
+  const data = s.grades[term];
+  const d = typeof data==='number' ? {final:data} : (data||{});
+  document.getElementById('grade-term-name').value = term;
+  GRADE_COMPONENTS.forEach(c=>{
+    const el = document.getElementById('grade-comp-'+c.key);
+    if(el) el.value = (typeof d[c.key]==='number') ? d[c.key] : '';
+  });
+  document.getElementById('grade-term-name').scrollIntoView({behavior:'smooth', block:'center'});
+}
 async function addGradeTerm(){
   const s = state.students[state.selectedStudentId];
   const termName = document.getElementById('grade-term-name').value.trim();
-  const val = parseFloat(document.getElementById('grade-term-val').value);
-  if(!termName || isNaN(val)) return;
-  s.grades[termName] = Math.max(0, Math.min(20, val));
+  if(!termName) return;
+  // Merge onto whatever was already stored for this term (rather than
+  // overwriting it) so re-saving a term to fill in just one missing
+  // component doesn't silently wipe the components the user already
+  // entered earlier. Also normalizes an old legacy numeric term into the
+  // breakdown object shape the first time it's edited.
+  const existing = s.grades[termName];
+  const termData = (existing && typeof existing === 'object') ? {...existing}
+    : (typeof existing === 'number') ? {final: existing} : {};
+  let anyFilled = false;
+  GRADE_COMPONENTS.forEach(c=>{
+    const raw = document.getElementById('grade-comp-'+c.key).value;
+    if(raw.trim()!==''){
+      const v = parseFloat(raw);
+      if(!isNaN(v)){ termData[c.key] = Math.max(0, Math.min(20, v)); anyFilled = true; }
+    }
+  });
+  if(!anyFilled) return;
+  s.grades[termName] = termData;
   await saveStudent(s);
   document.getElementById('grade-term-name').value='';
-  document.getElementById('grade-term-val').value='';
+  GRADE_COMPONENTS.forEach(c=>{ const el=document.getElementById('grade-comp-'+c.key); if(el) el.value=''; });
   render();
 }
 async function addChip(field){
@@ -871,6 +1230,32 @@ async function deleteComment(id){
   render();
 }
 
+// ---------- disciplinary records (ثبت انضباطی) ----------
+async function submitDisciplinary(){
+  const text = document.getElementById('disciplinary-text').value.trim();
+  if(!text) return;
+  const isAdmin = state.identity.role==='admin';
+  const s = state.students[state.selectedStudentId];
+  const record = {
+    id: uid(),
+    studentId: state.selectedStudentId,
+    teacherId: isAdmin ? 'admin' : state.identity.teacherId,
+    teacherName: isAdmin ? 'مدیر مدرسه' : state.identity.name,
+    text,
+    date: new Date().toLocaleDateString('fa-IR')
+  };
+  await saveDisciplinaryRecord(record);
+  document.getElementById('disciplinary-text').value='';
+  showToast('مورد انضباطی ثبت شد.');
+  render();
+}
+async function deleteDisciplinary(id){
+  if(!confirm('این مورد انضباطی حذف شود؟')) return;
+  await deleteDisciplinaryRecord(id);
+  showToast('مورد حذف شد.');
+  render();
+}
+
 // ---------- AI stamp (fully internal, no external calls) ----------
 function chipTotal(s, field){
   return Object.values(s[field]||{}).reduce((sum,arr)=>sum+(arr?arr.length:0), 0);
@@ -880,7 +1265,7 @@ async function runAIStamp(cls){
   if(studentsInClass.length === 0){ showToast('دانش‌آموزی در این کلاس نیست.'); return; }
 
   const scored = studentsInClass.map(s=>{
-    const vals = Object.values(s.grades).filter(v=>typeof v==='number' && v>0);
+    const vals = sortedGradeEntries(s.grades).map(e=>e[1]);
     const avg = vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : 0;
     const trend = vals.length>=2 ? vals[vals.length-1]-vals[0] : 0;
     const commentsCount = state.comments.filter(c=>c.studentId===s.id).length;
@@ -926,7 +1311,8 @@ function persianDigitsToLatin(str){
 }
 function sortedGradeEntries(grades){
   return Object.entries(grades)
-    .filter(e=>typeof e[1]==='number')
+    .map(e=>[e[0], computeTermAverage(e[1])])
+    .filter(e=>typeof e[1]==='number' && !isNaN(e[1]))
     .map((e,i)=>({e, i, num:(persianDigitsToLatin(e[0]).match(/\d+/)||[])[0]}))
     .sort((a,b)=>{
       if(a.num!=null && b.num!=null) return Number(a.num)-Number(b.num);
@@ -1027,6 +1413,8 @@ function render(){
     const app = document.getElementById('app');
     const offline = state.online ? '' : '<div class="offline-bar">آفلاین — تغییرات پس از اتصال دوباره ذخیره می‌شوند</div>';
     if(state.screen==='loading'){ app.innerHTML = offline+'<div class="center-screen"><p>در حال بارگذاری…</p></div>'; }
+    else if(state.screen==='agreement'){ app.innerHTML = offline+renderAgreement(); }
+    else if(state.screen==='banned'){ app.innerHTML = offline+renderBanned(); }
     else if(state.screen==='login'){ app.innerHTML = offline+renderLogin(); }
     else if(state.screen==='claimPassword'){ app.innerHTML = offline+renderClaimPassword(); }
     else if(state.screen==='identity'){ app.innerHTML = offline+renderIdentity(); }
@@ -1053,6 +1441,42 @@ function render(){
       }
     }
   }
+}
+
+function renderAgreement(){
+  return `
+  <div class="center-screen">
+    <div class="card gate-card">
+      <div class="brand">AKF</div>
+      <div class="brand-sub">سامانه مدیریت و پرونده دانش‌آموزان</div>
+      <h3 style="margin-top:14px">قوانین استفاده از سامانه</h3>
+      <div class="card" style="max-height:260px;overflow:auto;background:#FAF6EC;padding:12px;text-align:right;font-size:13.5px;line-height:2">
+        <p>۱. این سامانه فقط برای استفاده‌ی داخلی مدرسه و توسط معلمان و مدیریت مجاز است.</p>
+        <p>۲. اطلاعات دانش‌آموزان (نمرات، فعالیت‌ها، موارد انضباطی) محرمانه است و نباید با افراد غیرمجاز به اشتراک گذاشته شود.</p>
+        <p>۳. هر کاربر مسئول حفظ محرمانگی رمز عبور خود است. اشتراک‌گذاری حساب کاربری مجاز نیست.</p>
+        <p>۴. تلاش‌های مکرر و ناموفق برای ورود ثبت و بررسی می‌شود و می‌تواند منجر به مسدود شدن موقت دسترسی شود.</p>
+        <p>۵. هرگونه سوءاستفاده، دستکاری غیرمجاز داده‌ها، یا تلاش برای دور زدن محدودیت‌های دسترسی، پیگرد می‌شود.</p>
+        <p>۶. با ادامه، شما می‌پذیرید که از این سامانه با رعایت این قوانین و صرفاً برای اهداف آموزشی/اداری مدرسه استفاده می‌کنید.</p>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:14px;cursor:pointer">
+        <input type="checkbox" id="terms-checkbox" style="width:18px;height:18px" onchange="document.getElementById('terms-accept-btn').disabled=!this.checked">
+        <span>قوانین بالا را خواندم و می‌پذیرم.</span>
+      </label>
+      <button class="primary" id="terms-accept-btn" style="margin-top:12px;width:100%" disabled onclick="acceptTerms()">ورود به سامانه</button>
+    </div>
+  </div>`;
+}
+
+function renderBanned(){
+  return `
+  <div class="center-screen">
+    <div class="card gate-card">
+      <div class="brand">AKF</div>
+      <h3 style="margin-top:14px;color:var(--seal)">دسترسی مسدود شده</h3>
+      <p class="subtle" style="margin-top:8px">به دلیل تلاش‌های ناموفق و مکرر برای ورود، دسترسی از این آدرس (IP) موقتاً مسدود شده است.</p>
+      <p class="subtle">برای رفع مسدودی با مدیر مدرسه تماس بگیرید.</p>
+    </div>
+  </div>`;
 }
 
 function renderLogin(){
@@ -1229,20 +1653,82 @@ function renderApp(){
       <div class="brand" style="font-size:22px">AKF</div>
     </div>
     <div style="text-align:left">
-      <div class="who">${esc(state.identity.name)} · ${isAdmin?'مدیر':'معلم'}${!isAdmin?' · '+esc(state.identity.activeClass)+' ('+esc(mySubject)+')':''}</div>
+      <div class="who">${esc(state.identity.name)} · ${isAdmin?'مدیر':(state.identity.isDeputy?'معاون':'معلم')}${!isAdmin?' · '+esc(state.identity.activeClass)+' ('+esc(mySubject)+')':''}</div>
       ${!isAdmin?`<a class="linklike" onclick="state.screen='classPicker';render()">تغییر کلاس</a> · <a class="linklike" onclick="openEditSubject(state.identity.activeClass)">ویرایش درس</a> · `:''}<a class="linklike" onclick="switchIdentity()">خروج</a>
     </div>
   </div>
   <div class="tabbar">
-    ${isAdmin?`<button class="${state.tab==='dashboard'?'active':''}" onclick="state.tab='dashboard';state.selectedClass=null;render()">داشبورد</button>`:''}
+    ${(isAdmin || state.identity.isDeputy)?`<button class="${state.tab==='dashboard'?'active':''}" onclick="state.tab='dashboard';state.selectedClass=null;render()">داشبورد</button>`:''}
     <button class="${state.tab==='search'?'active':''}" onclick="state.tab='search';render()">جستجوی دانش‌آموز</button>
-    ${isAdmin?`<button class="${state.tab==='settings'?'active':''}" onclick="state.tab='settings';render()">تنظیمات</button>`:''}
+    <button class="${state.tab==='ai'?'active':''}" onclick="state.tab='ai';render()">دستیار هوشمند</button>
+    ${isAdmin?`<button class="${state.tab==='settings'?'active':''}" onclick="state.tab='settings';loadBannedIPs();render()">تنظیمات</button>`:''}
   </div>
-  ${state.tab==='dashboard' && isAdmin ? renderDashboard() : ''}
+  ${state.tab==='dashboard' && (isAdmin || state.identity.isDeputy) ? renderDashboard() : ''}
   ${state.tab==='search' ? renderSearch() : ''}
+  ${state.tab==='ai' ? renderAIAssistant() : ''}
   ${state.tab==='settings' && isAdmin ? renderSettings() : ''}
   ${toast}${modal}
   `;
+}
+
+// simple bar chart for comparing subject averages across the whole school
+function barChartSVG(items){ // items: [{label, value}], value 0-20
+  if(items.length===0) return '<p class="subtle">هنوز داده‌ای برای نمایش نیست.</p>';
+  const w=600, barH=28, gap=14, padL=110, padR=50, padT=6;
+  const h = padT + items.length*(barH+gap);
+  const maxW = w-padL-padR;
+  const colorFor = v => v>=14 ? '#3E7A4F' : v>=10 ? '#C9971F' : '#A63A3A';
+  const bars = items.map((it,i)=>{
+    const y = padT + i*(barH+gap);
+    const bw = Math.max(2,(it.value/20)*maxW);
+    return `
+    <text x="${padL-10}" y="${y+barH/2+4}" font-size="12" text-anchor="end" fill="#1B2A4A">${esc(it.label)}</text>
+    <rect x="${padL}" y="${y}" width="${maxW}" height="${barH}" rx="6" fill="#F0EAD8"/>
+    <rect x="${padL}" y="${y}" width="${bw}" height="${barH}" rx="6" fill="${colorFor(it.value)}"/>
+    <text x="${padL+bw+8}" y="${y+barH/2+4}" font-size="12" font-weight="700" fill="#1B2A4A">${it.value.toFixed(1)}</text>`;
+  }).join('');
+  return `<svg width="100%" viewBox="0 0 ${w} ${h}" style="max-width:100%">${bars}</svg>`;
+}
+
+function renderStatsOverview(){
+  const allStudents = Object.values(state.students);
+  const allAverages = allStudents.map(s=>overallAverage(s.grades)).filter(v=>v!=null);
+  const schoolAvg = allAverages.length ? allAverages.reduce((a,b)=>a+b,0)/allAverages.length : null;
+
+  // per-subject average, computed from each student's grade breakdown terms —
+  // grades aren't stored per-subject on the student record (a class has one
+  // shared grade book), so this reads school-wide subject performance from
+  // activities/projects/honors participation as a proxy engagement measure,
+  // and shows the true numeric average from the class-level grade trend.
+  const subjectEngagement = {};
+  allStudents.forEach(s=>{
+    SUBJECTS.forEach(su=>{
+      const n = (s.activities[su]||[]).length + (s.projects[su]||[]).length + (s.honors[su]||[]).length;
+      if(n>0){ subjectEngagement[su] = (subjectEngagement[su]||0) + n; }
+    });
+  });
+  const engagementItems = Object.entries(subjectEngagement)
+    .sort((a,b)=>b[1]-a[1]).slice(0,8)
+    .map(([label,count])=>({label, value: Math.min(20, count)})); // capped to fit the 0-20 bar scale
+
+  const disciplinaryCount = state.disciplinary.length;
+  const studentsWithRecords = new Set(state.disciplinary.map(d=>d.studentId)).size;
+
+  return `
+  <div class="card">
+    <h3>آمار کلی مدرسه</h3>
+    <div class="row" style="margin-top:6px">
+      <div><span class="subtle">تعداد دانش‌آموزان</span><div style="font-size:22px;font-weight:800">${allStudents.length}</div></div>
+      <div><span class="subtle">تعداد کلاس‌ها</span><div style="font-size:22px;font-weight:800">${state.classes.length}</div></div>
+      <div><span class="subtle">معدل کل مدرسه</span><div style="font-size:22px;font-weight:800">${schoolAvg!=null?schoolAvg.toFixed(2):'—'}</div></div>
+      <div><span class="subtle">موارد انضباطی</span><div style="font-size:22px;font-weight:800;color:var(--seal)">${disciplinaryCount}${studentsWithRecords?` <span style="font-size:12px;color:var(--ink-soft);font-weight:400">(${studentsWithRecords} دانش‌آموز)</span>`:''}</div></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>مشارکت بر اساس درس</h3>
+    <p class="subtle">مجموع فعالیت‌ها، پروژه‌ها و افتخارات ثبت‌شده در هر درس، در کل مدرسه.</p>
+    ${barChartSVG(engagementItems)}
+  </div>`;
 }
 
 function renderDashboard(){
@@ -1258,6 +1744,7 @@ function renderDashboard(){
   const sc = [...state.classes].sort((a,b)=>a.localeCompare(b,'fa'));
   const visibleClasses = q ? sc.filter(c=>c.includes(q)) : sc;
   return `
+  ${renderStatsOverview()}
   ${state.classes.length>8?`<div class="card" style="padding:12px">
     <input id="class-filter-input" value="${q}" oninput="state._classFilter=this.value;render()" placeholder="جستجوی کلاس (مثلاً ۷/۳)…">
   </div>`:''}
@@ -1280,6 +1767,7 @@ function renderClassView(cls){
   const teachers = teachersInClass(cls);
   const ai = state.aiSuggestions[cls];
   const aiTopIds = ai ? ai.students.map(s=>s.id) : [];
+  const isAdmin = state.identity.role==='admin';
   return `
   <a class="linklike" onclick="state.selectedClass=null;render()">← بازگشت به داشبورد</a>
   <div class="card" style="margin-top:10px">
@@ -1289,10 +1777,11 @@ function renderClassView(cls){
         teachers.map(t=>`${stampEl(t.color,t.shape)} <span class="subtle" style="margin-left:8px">${esc(teacherLabel(t, cls))}</span>`).join('&nbsp;&nbsp;')}
     </div>
     <p class="subtle">${teachers.length} معلم ثبت‌شده${teachers.length<3?' (پیشنهاد می‌شود حداقل ۳ معلم برای هر کلاس ثبت شود)':''}</p>
+    ${isAdmin?`
     <div class="row" style="margin-top:10px">
       <button class="ghost" onclick="openAddStudent('${cls}')">افزودن دانش‌آموز</button>
       <button class="gold" onclick="runAIStamp('${cls}')">مهر هوش مصنوعی داخلی (۵ نفر برتر)</button>
-    </div>
+    </div>`:'<p class="subtle" style="margin-top:8px">شما با دسترسی معاونت این کلاس را مشاهده می‌کنید.</p>'}
     ${ai?`<p class="subtle" style="margin-top:8px">آخرین به‌روزرسانی: ${ai.date}</p>`:''}
   </div>
   <div class="card">
@@ -1330,10 +1819,105 @@ function renderSearch(){
   </div>`;
 }
 
+// ---------- AI assistant chat UI ----------
+function renderAIAssistant(){
+  const key = getGroqKey();
+  const isAdmin = state.identity.role==='admin';
+  const chat = state.aiChat||[];
+  return `
+  <div class="card" style="background:linear-gradient(135deg,#FAF6EC,#fff)">
+    <h3>دستیار هوشمند AKF</h3>
+    <p class="subtle">اسم دانش‌آموز را بگویید تا نمره، معدل، فعالیت‌ها و روند پیشرفتش را برایتان خلاصه کند. مثال: «وضعیت علی رضایی چطوره؟» یا «نمودار فعالیت مریم احمدی رو نشون بده».</p>
+    ${!key ? `
+      <div class="card" style="padding:12px;margin-top:8px;background:#FDFBF5">
+        <p class="subtle">${isAdmin? 'برای فعال‌سازی دستیار، یک کلید رایگان Groq API لازم است (از console.groq.com بگیرید) و اینجا وارد کنید:' : 'دستیار هوشمند هنوز توسط مدیر مدرسه فعال نشده است.'}</p>
+        ${isAdmin?`
+          <div class="row" style="margin-top:8px">
+            <input id="groq-key-input" type="password" placeholder="کلید Groq API">
+            <button class="ghost" onclick="saveGroqKeyFromInput()">ذخیره</button>
+          </div>
+        `:''}
+      </div>
+    `:''}
+  </div>
+
+  <div class="card">
+    <div id="ai-chat-log" style="max-height:420px;overflow:auto;display:flex;flex-direction:column;gap:10px">
+      ${chat.length===0?'<p class="subtle">هنوز گفتگویی نیست — سؤال خود را بپرسید.</p>':
+        chat.map(m=>`
+          <div style="align-self:${m.role==='user'?'flex-start':'stretch'};max-width:${m.role==='user'?'85%':'100%'}">
+            ${m.role==='user'
+              ? `<div style="background:var(--ink);color:#fff;padding:9px 14px;border-radius:12px;font-size:14px">${esc(m.text)}</div>`
+              : `<div class="comment" style="border-color:var(--gold)">
+                   <div class="meta">🤖 <b>دستیار هوشمند</b></div>
+                   <div style="white-space:pre-line">${esc(m.text)}</div>
+                   ${(m.students||[]).map(sid=>{
+                     const s = state.students[sid];
+                     return s ? `<div style="margin-top:8px">${performanceChartSVG(s.grades)}</div>` : '';
+                   }).join('')}
+                 </div>`}
+          </div>
+        `).join('')}
+      ${state._aiLoading?'<div class="comment" style="border-color:var(--gold)"><span class="loader"></span> در حال فکر کردن…</div>':''}
+    </div>
+    <div class="row" style="margin-top:10px">
+      <input id="ai-question-input" placeholder="سؤال خود را بنویسید…" onkeydown="if(event.key==='Enter')sendAIMessage()" ${(!key||state._aiLoading)?'disabled':''}>
+      <button class="gold" onclick="sendAIMessage()" ${(!key||state._aiLoading)?'disabled':''}>ارسال</button>
+    </div>
+  </div>`;
+}
+
+function saveGroqKeyFromInput(){
+  const input = document.getElementById('groq-key-input');
+  const val = input ? input.value.trim() : '';
+  if(!val){ showToast('کلید را وارد کنید.'); return; }
+  setGroqKey(val);
+  showToast('کلید Groq ذخیره شد.');
+  render();
+}
+
+async function sendAIMessage(){
+  const input = document.getElementById('ai-question-input');
+  const q = input ? input.value.trim() : '';
+  if(!q || state._aiLoading) return;
+  input.value = '';
+  state.aiChat = state.aiChat||[];
+  state.aiChat.push({role:'user', text:q});
+  state._aiLoading = true;
+  render();
+
+  const result = await askAIAssistant(q);
+  state._aiLoading = false;
+  if(result.error){
+    state.aiChat.push({role:'assistant', text: result.error, students:[]});
+  } else {
+    state.aiChat.push({role:'assistant', text: result.answer, students:(result.students||[]).map(s=>s.id)});
+  }
+  render();
+  const log = document.getElementById('ai-chat-log');
+  if(log) log.scrollTop = log.scrollHeight;
+}
+
 function renderSettings(){
   const bulkStuLog = state._bulkStudentLog;
   const bulkTeaLog = state._bulkTeacherLog;
+  const bannedIPs = state._bannedIPsList || [];
   return `
+  <div class="card">
+    <h3>امنیت ورود</h3>
+    <p class="subtle">پس از ${FAILED_ATTEMPT_LIMIT} تلاش ناموفق ورود از یک آدرس IP در بازه‌ی ${FAILED_ATTEMPT_WINDOW_MIN} دقیقه، آن IP به‌صورت خودکار مسدود می‌شود.</p>
+    ${bannedIPs.length===0?'<p class="subtle" style="margin-top:8px">در حال حاضر هیچ IP مسدودی وجود ندارد.</p>':`
+    <table style="margin-top:8px">
+      <tr><th>IP</th><th>دلیل</th><th></th></tr>
+      ${bannedIPs.map(b=>`
+        <tr>
+          <td dir="ltr" style="text-align:right">${esc(b.id)}</td>
+          <td class="subtle">${esc(b.reason||'—')}</td>
+          <td><button class="ghost" style="padding:6px 10px;font-size:12px" onclick="unbanIP('${b.id}')">رفع مسدودی</button></td>
+        </tr>
+      `).join('')}
+    </table>`}
+  </div>
   <div class="card">
     <h3>مدیریت کلاس‌ها</h3>
     <div class="row">
@@ -1378,6 +1962,23 @@ function renderSettings(){
   </div>
 
   <div class="card">
+    <h3>مدیریت معلمان و معاونت</h3>
+    <p class="subtle">با فعال‌کردن «معاونت» برای یک معلم، او علاوه بر کلاس خودش می‌تواند همهٔ کلاس‌ها را به‌صورت فقط-مشاهده در تب «داشبورد» ببیند (بدون امکان حذف داده یا مدیریت کلی مثل مدیر).</p>
+    ${Object.values(state.teachers).length===0?'<p class="subtle" style="margin-top:8px">هنوز معلمی ثبت نشده.</p>':`
+    <table style="margin-top:8px">
+      <tr><th>نام</th><th>کلاس‌ها</th><th>معاونت</th><th></th></tr>
+      ${Object.values(state.teachers).sort((a,b)=>a.name.localeCompare(b.name,'fa')).map(t=>`
+        <tr>
+          <td style="text-align:right">${stampEl(t.color,t.shape,'small')} ${esc(t.name)}</td>
+          <td class="subtle">${esc((t.classes||[]).join('، ')||'—')}</td>
+          <td><button class="${t.isDeputy?'seal':'ghost'}" style="padding:6px 12px;font-size:12px" onclick="toggleDeputy('${t.id}')">${t.isDeputy?'✓ معاون':'اعطای معاونت'}</button></td>
+          <td><button class="ghost" style="padding:6px 10px;font-size:12px;color:var(--seal)" onclick="removeTeacherFromSettings('${t.id}')">حذف</button></td>
+        </tr>
+      `).join('')}
+    </table>`}
+  </div>
+
+  <div class="card">
     <h3>پشتیبان‌گیری</h3>
     <p class="subtle">دانلود یک فایل کامل از همهٔ کلاس‌ها، دانش‌آموزان، معلمان، نمرات، فعالیت‌ها و نظرات — برای نگهداری خارج از سایت. پیشنهاد می‌شود این کار را هر چند هفته یک‌بار تکرار کنید.</p>
     <button class="primary" onclick="exportBackup()">دانلود فایل پشتیبان (JSON)</button>
@@ -1416,7 +2017,7 @@ async function submitBulkStudents(){
     if(existingNames.has(name) || seenThisBatch.has(name)){ skippedDup++; return; }
     seenThisBatch.add(name);
     const id = uid();
-    toSave.push({ id, name, class: cls, grades:{'ترم ۱': 0}, activities:{}, projects:{}, honors:{} });
+    toSave.push({ id, name, class: cls, grades:{}, activities:{}, projects:{}, honors:{} });
     added++;
   });
 
@@ -1573,15 +2174,40 @@ function renderModal(){
       </div>
     </div>`;
   }
+  if(state._modal==='moveStudent'){
+    const s = state.students[state.selectedStudentId];
+    if(!s) return '';
+    const options = sortedClasses().filter(c=>c!==s.class);
+    return `<div class="modal-bg" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <button class="close-x" onclick="closeModal()">✕</button>
+        <h3>جابجایی ${esc(s.name)} به کلاس دیگر</h3>
+        <p class="subtle">کلاس فعلی: ${esc(s.class)}</p>
+        <label>کلاس مقصد</label>
+        <select id="move-target-class" onchange="state._moveTargetClass=this.value">
+          <option value="">— انتخاب کنید —</option>
+          ${options.map(c=>`<option value="${c}">${esc(c)}</option>`).join('')}
+        </select>
+        <div class="row" style="margin-top:14px">
+          <button class="ghost" onclick="closeModal()">انصراف</button>
+          <button class="seal" onclick="moveStudentToClass('${s.id}', document.getElementById('move-target-class').value)">جابجایی</button>
+        </div>
+      </div>
+    </div>`;
+  }
   if(state._modal==='student'){
     const s = state.students[state.selectedStudentId];
     if(!s) return '';
     const isAdmin = state.identity.role==='admin';
     const myTeacher = !isAdmin ? state.teachers[state.identity.teacherId] : null;
+    // a deputy sees every class (via identity.classes, expanded in normalizeData),
+    // but can only actually WRITE grades/comments in classes they truly teach —
+    // that real list lives on the teacher record itself, not the expanded identity one
+    const iTeachThisClass = !isAdmin && myTeacher && (myTeacher.classes||[]).includes(s.class);
     const subject = state._modalSubject || '';
     const canManage = isAdmin ? !!subject
-      : !!(state.identity.role==='teacher' && (state.identity.classes||[]).includes(s.class) && myTeacher && myTeacher.subjects[s.class]===subject && subject);
-    const canComment = !isAdmin && (state.identity.classes||[]).includes(s.class);
+      : !!(iTeachThisClass && myTeacher.subjects[s.class]===subject && subject);
+    const canComment = !isAdmin && iTeachThisClass;
     const studentComments = state.comments.filter(c=>c.studentId===s.id);
     const ai = state.aiSuggestions[s.class];
     const aiEntry = ai && ai.students.find(x=>x.id===s.id);
@@ -1589,17 +2215,35 @@ function renderModal(){
       <div class="modal">
         <button class="close-x" onclick="closeModal()">✕</button>
         <h2>${esc(s.name)} ${aiEntry?'<span class="ai-badge">★ منتخب هوش مصنوعی</span>':''}</h2>
-        <p class="subtle">${esc(s.class)}</p>
+        <p class="subtle">${esc(s.class)}${isAdmin?` · <a class="linklike" onclick="openMoveStudent('${s.id}')">جابجایی به کلاس دیگر</a>`:''}</p>
         ${aiEntry?`<p class="subtle" style="color:#8a6a12">دلیل: ${esc(aiEntry.reason)}</p>`:''}
 
         <h3 style="margin-top:16px">روند عملکرد سالانه</h3>
         ${performanceChartSVG(s.grades)}
-        ${(isAdmin || (state.identity.role==='teacher' && (state.identity.classes||[]).includes(s.class)))?`
-          <div class="row">
-            <input id="grade-term-name" placeholder="نام ترم (مثلاً ترم ۴)">
-            <input id="grade-term-val" type="number" min="0" max="20" placeholder="نمره از ۲۰">
-            <button class="ghost" onclick="addGradeTerm()">افزودن</button>
+        ${overallAverage(s.grades)!=null?`<p class="subtle">معدل کل: <b style="color:var(--ink);font-size:15px">${overallAverage(s.grades).toFixed(2)}</b> از ۲۰</p>`:''}
+        ${(isAdmin || iTeachThisClass)?`
+          <div class="card" style="padding:12px;background:#FAF6EC;margin-top:8px">
+            <label>نام ترم (مثلاً ترم ۴)</label>
+            <input id="grade-term-name" placeholder="ترم ۴">
+            <div class="row" style="margin-top:8px">
+              ${GRADE_COMPONENTS.map(c=>`
+                <div>
+                  <label>${c.label} (وزن ${Math.round(c.weight*100)}٪)</label>
+                  <input id="grade-comp-${c.key}" type="number" min="0" max="20" step="0.25" placeholder="از ۲۰">
+                </div>
+              `).join('')}
+            </div>
+            <button class="ghost" style="margin-top:10px" onclick="addGradeTerm()">افزودن / ذخیره ترم</button>
+            <p class="subtle" style="margin-top:6px">نیازی نیست هر سه مؤلفه پر شود؛ معدل ترم از مؤلفه‌های واردشده به‌صورت وزنی محاسبه می‌شود.</p>
           </div>
+          ${sortedGradeEntries(s.grades).length>0?`
+          <table style="margin-top:10px">
+            <tr><th>ترم</th>${GRADE_COMPONENTS.map(c=>`<th>${c.label}</th>`).join('')}<th>معدل ترم</th><th></th></tr>
+            ${Object.entries(s.grades).filter(e=>computeTermAverage(e[1])!=null).map(([term,data])=>{
+              const d = typeof data==='number' ? {final:data} : (data||{});
+              return `<tr><td>${esc(term)}</td>${GRADE_COMPONENTS.map(c=>`<td>${typeof d[c.key]==='number'?d[c.key]:'—'}</td>`).join('')}<td><b>${computeTermAverage(data).toFixed(2)}</b></td><td><a class="linklike" onclick='loadTermIntoForm(${JSON.stringify(term)})'>ویرایش</a></td></tr>`;
+            }).join('')}
+          </table>`:''}
         `:''}
 
         <h3 style="margin-top:16px">فعالیت‌ها، پروژه‌ها و افتخارات</h3>
@@ -1630,6 +2274,25 @@ function renderModal(){
           ${(subject ? (s.honors[subject]||[]) : []).map((a,i)=>`<span class="badge-honor">${esc(a)} ${canManage?`<button style="background:none;color:var(--seal)" onclick="removeChip('honors',${i})">✕</button>`:''}</span>`).join('') || '<span class="subtle">ثبت نشده</span>'}
         </div>
         ${canManage?`<div class="row" style="margin-top:8px"><input id="chip-input-honors" placeholder="افتخار جدید"><button class="ghost" onclick="addChip('honors')">افزودن</button></div>`:''}
+
+        <h3 style="margin-top:16px">ثبت انضباطی</h3>
+        ${(()=>{ const records = state.disciplinary.filter(d=>d.studentId===s.id);
+          return records.length===0?'<p class="subtle">موردی ثبت نشده.</p>':
+          records.map(d=>{
+            const canRemoveThis = isAdmin || (state.identity.role==='teacher' && d.teacherId===state.identity.teacherId);
+            return `<div class="comment" style="border-color:var(--seal)">
+              <div class="meta"><b>${esc(d.teacherName)}</b> · ${esc(d.date)}
+                ${canRemoveThis?`<a class="linklike" style="margin-right:auto" onclick="deleteDisciplinary('${d.id}')">حذف</a>`:''}
+              </div>
+              <div>${esc(d.text)}</div>
+            </div>`;
+          }).join('');
+        })()}
+        ${(isAdmin || iTeachThisClass)?`
+          <label style="margin-top:10px">ثبت مورد جدید</label>
+          <textarea id="disciplinary-text" rows="2" placeholder="مثلاً: تأخیر، عدم انجام تکلیف…"></textarea>
+          <button class="ghost" style="margin-top:8px" onclick="submitDisciplinary()">ثبت</button>
+        `:''}
 
         <h3 style="margin-top:16px">نظرات و ارزیابی معلمان</h3>
         ${studentComments.length===0?'<p class="subtle">نظری ثبت نشده.</p>':
