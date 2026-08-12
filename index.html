@@ -404,7 +404,7 @@ async function submitAdminLogin(){
   const pw = document.getElementById('login-admin-pw').value;
   const btn = document.getElementById('admin-login-btn');
   btn.disabled = true;
-  document.getElementById('login-err').textContent = '';
+  state._loginErr = '';
   try{
     await auth.signInWithEmailAndPassword(ADMIN_EMAIL, pw);
   }catch(e){
@@ -416,23 +416,30 @@ async function submitAdminLogin(){
     // repeats the same underlying failure forever.
     const notFoundCodes = ['auth/user-not-found', 'auth/invalid-credential', 'auth/wrong-password'];
     if(notFoundCodes.includes(e.code)){
-      document.getElementById('login-err').textContent = 'رمز اشتباه است، یا اگر اولین‌بار است، هنوز حساب مدیر ساخته نشده.';
+      state._loginErr = 'رمز اشتباه است، یا اگر اولین‌بار است، هنوز حساب مدیر ساخته نشده.';
       state._adminSetupOffer = pw;
     } else if(e.code === 'auth/unauthorized-domain'){
-      document.getElementById('login-err').textContent = 'این آدرس سایت در Firebase مجاز نشده (Authorized domains). با سازنده‌ی سایت تماس بگیرید.';
+      state._loginErr = 'این آدرس سایت در Firebase مجاز نشده (Authorized domains). با سازنده‌ی سایت تماس بگیرید.';
     } else if(e.code === 'auth/operation-not-allowed'){
-      document.getElementById('login-err').textContent = 'روش ورود با رمز عبور در Firebase فعال نیست. با سازنده‌ی سایت تماس بگیرید.';
+      state._loginErr = 'روش ورود با رمز عبور در Firebase فعال نیست. با سازنده‌ی سایت تماس بگیرید.';
+    } else if(e.code === 'auth/too-many-requests'){
+      state._loginErr = 'تعداد تلاش‌ها زیاد بوده — کمی صبر کنید و دوباره تلاش کنید.';
+    } else if(e.code === 'auth/network-request-failed'){
+      state._loginErr = 'اتصال اینترنت برقرار نیست. اتصال را بررسی کنید.';
     } else {
-      document.getElementById('login-err').textContent = 'خطا: ' + e.code;
+      state._loginErr = 'خطا: ' + e.code;
     }
+    btn.disabled = false;
     render();
+    return;
   }
   btn.disabled = false;
 }
 async function setupAdminAccount(){
   const pw = state._adminSetupOffer;
   if(!pw || pw.length < 6){
-    document.getElementById('login-err').textContent = 'رمز باید حداقل ۶ کاراکتر باشد.';
+    state._loginErr = 'رمز باید حداقل ۶ کاراکتر باشد.';
+    render();
     return;
   }
   try{
@@ -441,9 +448,11 @@ async function setupAdminAccount(){
   }catch(e){
     console.error('admin setup failed:', e.code, e.message);
     if(e.code === 'auth/email-already-in-use'){
-      document.getElementById('login-err').textContent = 'حساب مدیر از قبل ساخته شده — رمزی که زدید اشتباه است. رمز درست را وارد کنید.';
+      state._loginErr = 'حساب مدیر از قبل ساخته شده — رمزی که زدید اشتباه است. رمز درست را وارد کنید.';
+    } else if(e.code === 'auth/network-request-failed'){
+      state._loginErr = 'اتصال اینترنت برقرار نیست. اتصال را بررسی کنید.';
     } else {
-      document.getElementById('login-err').textContent = 'خطا: ' + e.code;
+      state._loginErr = 'خطا: ' + e.code;
     }
     state._adminSetupOffer = false;
     render();
@@ -452,7 +461,8 @@ async function setupAdminAccount(){
 async function submitTeacherLogin(){
   const name = document.getElementById('login-teacher-name').value.trim();
   const pw = document.getElementById('login-teacher-pw').value;
-  if(!name){ document.getElementById('login-err').textContent = 'نام را وارد کنید.'; return; }
+  state._loginErr = '';
+  if(!name){ state._loginErr = 'نام را وارد کنید.'; render(); return; }
   const email = await nameToEmail(name);
 
   if(!pw){
@@ -473,7 +483,8 @@ async function submitTeacherLogin(){
       render();
       return;
     }
-    document.getElementById('login-err').textContent = 'رمز را وارد کنید.';
+    state._loginErr = 'رمز را وارد کنید.';
+    render();
     return;
   }
 
@@ -491,16 +502,18 @@ async function submitTeacherLogin(){
       } else {
         const existing = Object.values(state.teachers).find(t=>t.name===name);
         if(existing){
-          document.getElementById('login-err').textContent = 'رمز اشتباه است.';
+          state._loginErr = 'رمز اشتباه است.';
         } else {
           state._pendingName = name;
           state.screen = 'identity';
         }
       }
-      render();
+    } else if(e.code === 'auth/network-request-failed'){
+      state._loginErr = 'اتصال اینترنت برقرار نیست. اتصال را بررسی کنید.';
     } else {
-      document.getElementById('login-err').textContent = 'رمز اشتباه است.';
+      state._loginErr = 'رمز اشتباه است.';
     }
+    render();
   }
   btn.disabled = false;
 }
@@ -1044,8 +1057,8 @@ function renderLogin(){
         </div>
       ` : mode==='admin' ? `
         <label>رمز مدیر</label>
-        <input id="login-admin-pw" type="password" placeholder="رمز مدیر" onkeydown="if(event.key==='Enter')submitAdminLogin()">
-        <div id="login-err" class="err"></div>
+        <input id="login-admin-pw" type="password" placeholder="رمز مدیر" value="${esc(state._adminSetupOffer||'')}" onkeydown="if(event.key==='Enter')submitAdminLogin()">
+        <div id="login-err" class="err">${esc(state._loginErr||'')}</div>
         ${state._adminSetupOffer ? `
           <div class="card" style="margin-top:10px;padding:10px;background:#FAF6EC">
             <p class="subtle">هنوز حساب مدیر ساخته نشده. اگر شما مدیر هستید، همین رمز که تایپ کردید به‌عنوان رمز دائمی مدیر ثبت می‌شود — این کار فقط یک‌بار قابل انجام است.</p>
@@ -1062,7 +1075,7 @@ function renderLogin(){
         <label>رمز عبور</label>
         <input id="login-teacher-pw" type="password" placeholder="رمز شما (اگر برای اولین‌بار است، خالی بگذارید)" onkeydown="if(event.key==='Enter')submitTeacherLogin()">
         <p class="subtle" style="margin-top:6px">اگر برای اولین بار وارد می‌شوید، فقط نام خود را بنویسید و «ورود» را بزنید.</p>
-        <div id="login-err" class="err"></div>
+        <div id="login-err" class="err">${esc(state._loginErr||'')}</div>
         <div class="row" style="margin-top:14px">
           <button class="ghost" onclick="switchLoginMode(null)">بازگشت</button>
           <button class="seal" id="teacher-login-btn" onclick="submitTeacherLogin()">ورود</button>
